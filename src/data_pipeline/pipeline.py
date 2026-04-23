@@ -14,16 +14,24 @@ logger = logging.getLogger(__name__)
 class DataPipeline:
     """Orchestrates data collection from multiple sources."""
 
-    def __init__(self, kafka_bootstrap_servers: str = "localhost:9092"):
+    def __init__(self, kafka_bootstrap_servers: str = None):
         """Initialize the data pipeline."""
         self.jobs: List[JobPosting] = []
         self.linkedin_scraper = LinkedInScraper()
         self.kaggle_loader = KaggleDataLoader()
         self.processing_log = []
-        self.producer = KafkaProducer(
-            bootstrap_servers=[kafka_bootstrap_servers],
-            value_serializer=lambda v: json.dumps(v, default=str).encode('utf-8')
-        )
+        self.kafka_bootstrap_servers = kafka_bootstrap_servers
+        self._producer = None
+
+    @property
+    def producer(self):
+        """Lazy initialization of Kafka producer."""
+        if self._producer is None and self.kafka_bootstrap_servers:
+            self._producer = KafkaProducer(
+                bootstrap_servers=[self.kafka_bootstrap_servers],
+                value_serializer=lambda v: json.dumps(v, default=str).encode('utf-8')
+            )
+        return self._producer
 
     def run(
         self,
@@ -62,11 +70,7 @@ class DataPipeline:
 
             elapsed = (datetime.now() - start_time).total_seconds()
             logger.info(f"Pipeline completed in {elapsed:.2f}s with {len(self.jobs)} jobs sent to Kafka")
-            return {
-                "jobs_processed": len(self.jobs),
-                "elapsed_seconds": elapsed,
-                "processing_log": self.processing_log
-            }
+            return self.jobs
 
         except Exception as e:
             logger.error(f"Pipeline error: {str(e)}")
@@ -114,6 +118,10 @@ class DataPipeline:
 
     def _send_to_kafka(self) -> None:
         """Send collected jobs to Kafka topic."""
+        if not self.producer:
+            logger.warning("Kafka producer not configured, skipping send to Kafka")
+            return
+        
         logger.info(f"Sending {len(self.jobs)} jobs to Kafka")
         for job in self.jobs:
             try:

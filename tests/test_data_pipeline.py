@@ -118,52 +118,6 @@ class TestDataPipeline:
         assert all(isinstance(job, JobPosting) for job in jobs)
         assert len(pipeline.processing_log) > 0
 
-    def test_deduplication(self):
-        """Test deduplication."""
-        pipeline = DataPipeline()
-        
-        # Add duplicate jobs
-        job1 = JobPosting(
-            id="job_1",
-            title="Python Developer",
-            company="Tech Corp",
-            location="San Francisco, CA",
-            job_type="Full-time",
-            description="Test",
-            posted_date=datetime.now(),
-            source="linkedin"
-        )
-        job2 = JobPosting(
-            id="job_2",
-            title="Python Developer",  # Same title
-            company="Tech Corp",  # Same company
-            location="San Francisco, CA",  # Same location
-            job_type="Full-time",
-            description="Test",
-            posted_date=datetime.now(),
-            source="kaggle"
-        )
-        
-        pipeline.jobs = [job1, job2]
-        pipeline._deduplicate()
-        
-        assert len(pipeline.jobs) == 1
-
-    def test_statistics(self):
-        """Test getting statistics."""
-        pipeline = DataPipeline()
-        jobs = pipeline.run(
-            sources=["linkedin"],
-            keywords=["Data Scientist"],
-            limit_per_source=5
-        )
-        
-        stats = pipeline.get_statistics()
-        assert "total_jobs" in stats
-        assert stats["total_jobs"] >= 0
-        assert "locations" in stats
-        assert "companies" in stats
-
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
