@@ -1,0 +1,38 @@
+# Data Processing
+pandas==2.0.3
+numpy==1.24.3
+polars==0.18.13
+
+# Database
+sqlalchemy==2.0.19
+psycopg2-binary==2.9.6
+
+# API & Web
+fastapi==0.100.0
+uvicorn==0.23.2
+requests==2.31.0
+
+# Data Collection
+selenium==4.10.0
+beautifulsoup4==4.12.2
+scrapy==2.9.0
+
+# Machine Learning
+scikit-learn==1.3.0
+xgboost==2.0.0
+prophet==1.1.5
+
+# NLP
+transformers==4.31.0
+torch==2.0.1
+nltk==3.8.1
+
+# Utilities
+python-dotenv==1.0.0
+pydantic==2.1.1
+loguru==0.7.0
+
+# Development
+pytest==7.4.0
+black==23.7.0
+pylint==2.17.5
