@@ -4,6 +4,7 @@ import logging
 from typing import List, Optional
 from datetime import datetime
 import json
+from kafka import KafkaProducer
 from .models import JobPosting
 from .scraper import LinkedInScraper, KaggleDataLoader
 
@@ -13,19 +14,23 @@ logger = logging.getLogger(__name__)
 class DataPipeline:
     """Orchestrates data collection from multiple sources."""
 
-    def __init__(self):
+    def __init__(self, kafka_bootstrap_servers: str = "localhost:9092"):
         """Initialize the data pipeline."""
         self.jobs: List[JobPosting] = []
         self.linkedin_scraper = LinkedInScraper()
         self.kaggle_loader = KaggleDataLoader()
         self.processing_log = []
+        self.producer = KafkaProducer(
+            bootstrap_servers=[kafka_bootstrap_servers],
+            value_serializer=lambda v: json.dumps(v, default=str).encode('utf-8')
+        )
 
     def run(
         self,
         sources: List[str] = None,
         keywords: List[str] = None,
         limit_per_source: int = 100
-    ) -> List[JobPosting]:
+    ) -> dict:
         """Run the complete data pipeline.
         
         Args:
@@ -34,7 +39,7 @@ class DataPipeline:
             limit_per_source: Max jobs per source
             
         Returns:
-            List of processed JobPosting objects
+            Dict with processing statistics
         """
         if sources is None:
             sources = ["linkedin", "kaggle"]
@@ -45,25 +50,23 @@ class DataPipeline:
         start_time = datetime.now()
 
         try:
-            # Fetch from each source
+            # Fetch from each source and send to Kafka
             for source in sources:
                 if source.lower() == "linkedin":
                     self._fetch_from_linkedin(keywords, limit_per_source)
                 elif source.lower() == "kaggle":
                     self._fetch_from_kaggle(limit_per_source)
 
-            # Data quality checks
-            self._validate_data()
-
-            # Deduplication
-            self._deduplicate()
-
-            # Enrichment
-            self._enrich_data()
+            # Send jobs to Kafka
+            self._send_to_kafka()
 
             elapsed = (datetime.now() - start_time).total_seconds()
-            logger.info(f"Pipeline completed in {elapsed:.2f}s with {len(self.jobs)} jobs")
-            return self.jobs
+            logger.info(f"Pipeline completed in {elapsed:.2f}s with {len(self.jobs)} jobs sent to Kafka")
+            return {
+                "jobs_processed": len(self.jobs),
+                "elapsed_seconds": elapsed,
+                "processing_log": self.processing_log
+            }
 
         except Exception as e:
             logger.error(f"Pipeline error: {str(e)}")
@@ -109,112 +112,13 @@ class DataPipeline:
                 "timestamp": datetime.now().isoformat()
             })
 
-    def _validate_data(self) -> None:
-        """Validate data quality and remove invalid records."""
-        logger.info("Validating data quality")
-        initial_count = len(self.jobs)
-        
-        # Remove jobs with missing critical fields
-        self.jobs = [
-            job for job in self.jobs
-            if job.title and job.company and job.location
-        ]
-        
-        removed = initial_count - len(self.jobs)
-        if removed > 0:
-            logger.warning(f"Removed {removed} invalid records")
-
-    def _deduplicate(self) -> None:
-        """Remove duplicate jobs."""
-        logger.info("Deduplicating jobs")
-        initial_count = len(self.jobs)
-        
-        seen_ids = set()
-        unique_jobs = []
-        
+    def _send_to_kafka(self) -> None:
+        """Send collected jobs to Kafka topic."""
+        logger.info(f"Sending {len(self.jobs)} jobs to Kafka")
         for job in self.jobs:
-            job_key = (job.title.lower(), job.company.lower(), job.location.lower())
-            if job_key not in seen_ids:
-                seen_ids.add(job_key)
-                unique_jobs.append(job)
-        
-        removed = initial_count - len(unique_jobs)
-        if removed > 0:
-            logger.info(f"Removed {removed} duplicate jobs")
-        self.jobs = unique_jobs
-
-    def _enrich_data(self) -> None:
-        """Enrich job data with additional insights."""
-        logger.info("Enriching job data")
-        
-        # Group by skill to calculate skill frequency
-        skill_counts = {}
-        for job in self.jobs:
-            for skill in job.required_skills:
-                skill_counts[skill] = skill_counts.get(skill, 0) + 1
-        
-        # Add skill frequency to jobs
-        for job in self.jobs:
-            # Calculate average salary if available
-            if job.salary_min and job.salary_max:
-                job_dict = job.dict()
-                job_dict["average_salary"] = (job.salary_min + job.salary_max) / 2
-                job = JobPosting(**job_dict)
-
-    def save_to_csv(self, filepath: str) -> None:
-        """Save jobs to CSV file."""
-        try:
-            import pandas as pd
-            data = [job.dict() for job in self.jobs]
-            df = pd.DataFrame(data)
-            df.to_csv(filepath, index=False)
-            logger.info(f"Saved {len(self.jobs)} jobs to {filepath}")
-        except Exception as e:
-            logger.error(f"Error saving to CSV: {str(e)}")
-
-    def save_to_json(self, filepath: str) -> None:
-        """Save jobs to JSON file."""
-        try:
-            with open(filepath, 'w') as f:
-                data = [job.dict(default=str) for job in self.jobs]
-                json.dump(data, f, indent=2)
-            logger.info(f"Saved {len(self.jobs)} jobs to {filepath}")
-        except Exception as e:
-            logger.error(f"Error saving to JSON: {str(e)}")
-
-    def get_statistics(self) -> dict:
-        """Get pipeline statistics."""
-        if not self.jobs:
-            return {}
-
-        import statistics
-
-        salaries = [
-            (job.salary_min + job.salary_max) / 2
-            for job in self.jobs
-            if job.salary_min and job.salary_max
-        ]
-
-        skill_counts = {}
-        for job in self.jobs:
-            for skill in job.required_skills:
-                skill_counts[skill] = skill_counts.get(skill, 0) + 1
-
-        return {
-            "total_jobs": len(self.jobs),
-            "locations": len(set(job.location for job in self.jobs)),
-            "companies": len(set(job.company for job in self.jobs)),
-            "unique_skills": len(skill_counts),
-            "salary_stats": {
-                "count": len(salaries),
-                "mean": statistics.mean(salaries) if salaries else 0,
-                "median": statistics.median(salaries) if salaries else 0,
-                "std_dev": statistics.stdev(salaries) if len(salaries) > 1 else 0,
-            },
-            "top_skills": sorted(
-                skill_counts.items(),
-                key=lambda x: x[1],
-                reverse=True
-            )[:10],
-            "processing_log": self.processing_log
-        }
+            try:
+                future = self.producer.send('job_postings', job.dict())
+                future.get(timeout=10)  # Wait for send to complete
+            except Exception as e:
+                logger.error(f"Failed to send job {job.id} to Kafka: {str(e)}")
+        self.producer.flush()

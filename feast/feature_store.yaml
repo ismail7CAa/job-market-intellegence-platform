@@ -1,0 +1,10 @@
+project: job_market_feature_store
+registry: data/registry.db
+provider: local
+online_store:
+  type: redis
+  connection_string: redis://redis:6379
+offline_store:
+  type: bigquery
+  project_id: your-gcp-project-id
+  dataset_id: feature_store_offline

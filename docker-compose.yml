@@ -20,6 +20,109 @@ services:
       timeout: 5s
       retries: 5
 
+  # Zookeeper for Kafka
+  zookeeper:
+    image: bitnami/zookeeper:3.9
+    container_name: jmip_zookeeper
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: yes
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper_data:/bitnami/zookeeper
+
+  # Kafka
+  kafka:
+    image: bitnami/kafka:3.5
+    container_name: jmip_kafka
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9094
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      ALLOW_PLAINTEXT_LISTENER: yes
+    ports:
+      - "9092:9092"
+      - "9094:9094"
+    depends_on:
+      - zookeeper
+    volumes:
+      - kafka_data:/bitnami/kafka
+
+  # Airflow Init
+  airflow-init:
+    image: apache/airflow:2.7.3
+    container_name: jmip_airflow_init
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://${DB_USER:-jobmarket}:${DB_PASSWORD:-dev_password}@postgres:5432/${DB_NAME:-job_market}
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-}
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    command: airflow db migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Airflow Webserver
+  airflow-webserver:
+    image: apache/airflow:2.7.3
+    container_name: jmip_airflow_webserver
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://${DB_USER:-jobmarket}:${DB_PASSWORD:-dev_password}@postgres:5432/${DB_NAME:-job_market}
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-}
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+    command: airflow webserver
+    depends_on:
+      - airflow-init
+
+  # Airflow Scheduler
+  airflow-scheduler:
+    image: apache/airflow:2.7.3
+    container_name: jmip_airflow_scheduler
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://${DB_USER:-jobmarket}:${DB_PASSWORD:-dev_password}@postgres:5432/${DB_NAME:-job_market}
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-}
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+    command: airflow scheduler
+    depends_on:
+      - airflow-init
+
+  # Kafka Consumer
+  kafka-consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jmip_kafka_consumer
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /app/service-account.json
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      BIGQUERY_PROJECT: your-gcp-project-id
+      BIGQUERY_DATASET: bronze
+    depends_on:
+      kafka:
+        condition: service_started
+    volumes:
+      - ./src:/app/src
+      - ./service-account.json:/app/service-account.json
+    command: python -m src.data_pipeline.kafka_consumer
+    restart: unless-stopped
+
   # Main Application
   app:
     build:
@@ -34,11 +137,14 @@ services:
       API_PORT: 8000
       LINKEDIN_API_KEY: ${LINKEDIN_API_KEY:-}
       KAGGLE_API_KEY: ${KAGGLE_API_KEY:-}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     ports:
       - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
+      kafka:
+        condition: service_started
     volumes:
       - ./src:/app/src
       - ./data:/app/data
@@ -61,6 +167,8 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  zookeeper_data:
+  kafka_data:
 
 networks:
   default:
