@@ -1,0 +1,25 @@
+# Docker build context ignore
+__pycache__/
+*.py[cod]
+*.egg-info/
+.git/
+.gitignore
+.env
+.env.*
+.vscode/
+.idea/
+*.md
+tests/
+docs/
+venv/
+ENV/
+*.log
+.pytest_cache/
+.coverage
+.DS_Store
+*.swp
+*.swo
+*~
+.env.example
+README.md
+LICENSE
