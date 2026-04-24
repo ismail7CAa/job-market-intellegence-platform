@@ -42,7 +42,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pandas numpy sqlalchemy psycopg2-binary pydantic kafka-python pytest pytest-cov
+          pip install pandas numpy sqlalchemy psycopg2-binary pydantic kafka-python requests pytest pytest-cov
 
       - name: Lint with Pylint
         run: |
