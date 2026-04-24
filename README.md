@@ -26,4 +26,36 @@ A comprehensive system that analyzes job market trends using real-world data sou
 
 ## Status
 
-🚀 Under active development# job-market-intellegence-platform
+Under active development# job-market-intellegence-platform
+
+## Experiment Tracking
+
+The project now includes MLflow-based experiment tracking for role prediction runs using the training and production datasets in `data/`.
+
+Run a tracked experiment locally:
+
+```bash
+python cli.py track-experiment \
+  --train-data data/job_postings_training.csv \
+  --eval-data data/job_postings_production.csv
+```
+
+This workflow logs:
+
+- Versioned runs with dataset fingerprints
+- Evaluation metrics such as accuracy and macro F1
+- Artifacts including predictions, a classification report, and a confusion matrix
+- A registered model in the MLflow model registry
+
+Default local MLflow configuration:
+
+- Tracking URI: `sqlite:///mlflow.db`
+- Artifact root: `./mlartifacts`
+- Experiment name: `job-market-role-prediction`
+- Registered model name: `job_market_role_predictor`
+
+To inspect the runs in the UI:
+
+```bash
+mlflow ui --backend-store-uri sqlite:///mlflow.db
+```

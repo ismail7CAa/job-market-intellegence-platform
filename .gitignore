@@ -53,6 +53,9 @@ htmlcov/
 # Logs
 *.log
 logs/
+mlruns/
+mlartifacts/
+mlflow.db
 
 # Terraform
 terraform/.terraform/

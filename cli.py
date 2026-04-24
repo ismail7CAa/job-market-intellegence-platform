@@ -1,7 +1,6 @@
 """CLI tool for running the data pipeline."""
 
 import click
-import json
 import sys
 from pathlib import Path
 from loguru import logger
@@ -11,6 +10,7 @@ logger.remove()
 logger.add(sys.stderr, format="<level>{level: <8}</level> | <cyan>{name}</cyan> - <level>{message}</level>")
 
 from src.data_pipeline.pipeline import DataPipeline
+from src.prediction.role_predictor import RolePredictor
 
 
 @click.group()
@@ -132,6 +132,94 @@ def analyze(input):
             for company, count in df['company'].value_counts().head(5).items():
                 click.echo(f"   {company}: {count}")
     
+    except Exception as e:
+        click.echo(f"❌ Error: {str(e)}", err=True)
+        sys.exit(1)
+
+
+@cli.command("track-experiment")
+@click.option(
+    "--train-data",
+    default="data/job_postings_training.csv",
+    help="Training dataset path"
+)
+@click.option(
+    "--eval-data",
+    default="data/job_postings_production.csv",
+    help="Evaluation dataset path"
+)
+@click.option(
+    "--experiment-name",
+    default=None,
+    help="Override MLflow experiment name"
+)
+@click.option(
+    "--run-name",
+    default=None,
+    help="Custom MLflow run name"
+)
+@click.option(
+    "--tracking-uri",
+    default=None,
+    help="Override MLflow tracking URI"
+)
+@click.option(
+    "--artifact-root",
+    default=None,
+    help="Override MLflow artifact root"
+)
+@click.option(
+    "--registered-model-name",
+    default=None,
+    help="Override the MLflow registered model name"
+)
+@click.option(
+    "--skip-registry",
+    is_flag=True,
+    help="Do not register the model in the MLflow model registry"
+)
+def track_experiment(
+    train_data,
+    eval_data,
+    experiment_name,
+    run_name,
+    tracking_uri,
+    artifact_root,
+    registered_model_name,
+    skip_registry,
+):
+    """Train and track a role prediction experiment with MLflow."""
+    click.echo("🧪 Running MLflow experiment tracking...")
+    click.echo(f"   Training data: {train_data}")
+    click.echo(f"   Evaluation data: {eval_data}")
+
+    try:
+        predictor = RolePredictor()
+        result = predictor.run_experiment(
+            training_data_path=train_data,
+            evaluation_data_path=eval_data,
+            tracking_uri=tracking_uri,
+            experiment_name=experiment_name,
+            artifact_root=artifact_root,
+            registered_model_name=registered_model_name,
+            run_name=run_name,
+            register_model=not skip_registry,
+        )
+
+        click.echo("\n✅ Experiment tracked successfully")
+        click.echo(f"   Run ID: {result['run_id']}")
+        click.echo(f"   Tracking URI: {result['tracking_uri']}")
+        click.echo(f"   Accuracy: {result['metrics']['accuracy']:.3f}")
+        click.echo(f"   Macro F1: {result['metrics']['f1_macro']:.3f}")
+
+        if result.get("registered_model_name"):
+            click.echo(
+                "   Registered model: "
+                f"{result['registered_model_name']} v{result['registered_model_version']}"
+            )
+        else:
+            click.echo("   Model registry: skipped")
+
     except Exception as e:
         click.echo(f"❌ Error: {str(e)}", err=True)
         sys.exit(1)
