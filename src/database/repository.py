@@ -1,8 +1,9 @@
 """Repository pattern for database operations."""
 
-from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 import uuid
+from typing import List, Optional
+
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 
@@ -301,7 +302,7 @@ class JobPostingRepository:
             description=description,
             source=source,
             url=url,
-            posted_date=posted_date or datetime.utcnow()
+            posted_date=posted_date or datetime.now(UTC)
         )
         self.session.add(job)
         self.session.commit()
@@ -317,7 +318,7 @@ class JobPostingRepository:
         Returns:
             List of JobPosting objects
         """
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
+        cutoff_date = datetime.now(UTC) - timedelta(days=days)
         return self.session.query(JobPosting).filter(
             JobPosting.posted_date >= cutoff_date
         ).order_by(desc(JobPosting.posted_date)).limit(limit).all()

@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from config.settings import (
     MLFLOW_ARTIFACT_ROOT,
@@ -44,7 +44,11 @@ class MLflowExperimentTracker:
 
         if self.artifact_root.startswith("file://"):
             parsed = urlparse(self.artifact_root)
-            Path(os.path.abspath(os.path.join(parsed.netloc or "/", parsed.path))).mkdir(
+            artifact_path = Path(unquote(parsed.path))
+            if parsed.netloc and parsed.netloc not in {"", "localhost"}:
+                artifact_path = Path(f"/{parsed.netloc}{artifact_path}")
+
+            artifact_path.mkdir(
                 parents=True,
                 exist_ok=True,
             )

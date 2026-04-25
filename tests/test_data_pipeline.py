@@ -1,7 +1,10 @@
 """Tests for the data pipeline."""
 
-import pytest
+import json
 from datetime import datetime
+
+import pytest
+
 from src.data_pipeline.models import JobPosting
 from src.data_pipeline.scraper import LinkedInScraper, KaggleDataLoader
 from src.data_pipeline.pipeline import DataPipeline
@@ -117,6 +120,47 @@ class TestDataPipeline:
         assert isinstance(jobs, list)
         assert all(isinstance(job, JobPosting) for job in jobs)
         assert len(pipeline.processing_log) > 0
+
+    def test_get_statistics(self):
+        """Test pipeline statistics generation."""
+        pipeline = DataPipeline()
+        pipeline.run(
+            sources=["linkedin", "kaggle"],
+            keywords=["Python Developer"],
+            limit_per_source=3
+        )
+
+        stats = pipeline.get_statistics()
+
+        assert stats["total_jobs"] == len(pipeline.jobs)
+        assert stats["locations"] > 0
+        assert stats["companies"] > 0
+        assert stats["unique_skills"] > 0
+        assert "top_skills" in stats
+        assert "sources" in stats
+
+    def test_save_to_csv_and_json(self, tmp_path):
+        """Test exporting pipeline data to CSV and JSON."""
+        pipeline = DataPipeline()
+        pipeline.run(
+            sources=["linkedin", "kaggle"],
+            keywords=["Python Developer"],
+            limit_per_source=2
+        )
+
+        csv_path = tmp_path / "jobs.csv"
+        json_path = tmp_path / "jobs.json"
+
+        pipeline.save_to_csv(str(csv_path))
+        pipeline.save_to_json(str(json_path))
+
+        assert csv_path.exists()
+        assert json_path.exists()
+        assert "required_skills" in csv_path.read_text(encoding="utf-8")
+
+        payload = json.loads(json_path.read_text(encoding="utf-8"))
+        assert len(payload) == len(pipeline.jobs)
+        assert all("title" in item for item in payload)
 
 
 if __name__ == "__main__":

@@ -36,6 +36,7 @@ class RolePredictor:
             "combined_text",
             "source",
             "remote_status",
+            "location",
             "salary_avg",
             "skill_count",
         ]
@@ -93,6 +94,7 @@ class RolePredictor:
             "remote_status",
             "unknown",
         ).fillna("unknown").astype(str)
+        frame["location"] = self._column_or_default(frame, "location", "unknown").fillna("unknown").astype(str)
         frame["title"] = self._column_or_default(frame, "title", "").fillna("").astype(str)
         frame["description"] = self._column_or_default(frame, "description", "").fillna("").astype(str)
         frame["combined_text"] = (
@@ -117,7 +119,7 @@ class RolePredictor:
                                 "selector",
                                 FunctionTransformer(self._combine_text_columns, validate=False),
                             ),
-                            ("tfidf", TfidfVectorizer(ngram_range=(1, 2))),
+                            ("tfidf", TfidfVectorizer(ngram_range=(1, 3))),
                         ]
                     ),
                     ["combined_text"],
@@ -125,7 +127,7 @@ class RolePredictor:
                 (
                     "categorical",
                     OneHotEncoder(handle_unknown="ignore"),
-                    ["source", "remote_status"],
+                    ["source", "remote_status", "location"],
                 ),
                 (
                     "numeric",
@@ -145,7 +147,11 @@ class RolePredictor:
                 ("preprocessor", preprocessor),
                 (
                     "classifier",
-                    LogisticRegression(max_iter=1000, random_state=self.random_state),
+                    LogisticRegression(
+                        max_iter=1000,
+                        random_state=self.random_state,
+                        class_weight="balanced",
+                    ),
                 ),
             ]
         )
@@ -227,6 +233,49 @@ class RolePredictor:
         predictions_frame = prepared.copy()
         predictions_frame["predicted_role_type"] = predictions
         return metrics, predictions_frame
+
+    def forecast_role_demand(
+        self,
+        records: Union[pd.DataFrame, List[Dict]],
+        quarters_ahead: int = 1,
+        top_n: int = 10,
+    ) -> List[Dict]:
+        """Forecast role demand from current job records using classifier output."""
+        if self.model is None:
+            raise ValueError("Model has not been trained yet.")
+
+        prepared = self.prepare_training_frame(records, require_label=False)
+        predictions = self.model.predict(prepared[self.feature_columns])
+        if hasattr(self.model, "predict_proba"):
+            probabilities = self.model.predict_proba(prepared[self.feature_columns])
+            confidences = probabilities.max(axis=1)
+        else:
+            confidences = [1.0] * len(predictions)
+
+        summary: Dict[str, Dict[str, float]] = {}
+        growth_factor = 1 + (0.08 * quarters_ahead)
+        for prediction, confidence in zip(predictions, confidences):
+            if prediction not in summary:
+                summary[prediction] = {"count": 0, "confidence_total": 0.0}
+            summary[prediction]["count"] += 1
+            summary[prediction]["confidence_total"] += float(confidence)
+
+        results = []
+        for role, values in summary.items():
+            average_confidence = values["confidence_total"] / values["count"]
+            results.append({
+                "role": role,
+                "observed_count": values["count"],
+                "projected_demand_index": values["count"] * growth_factor,
+                "confidence_score": round(average_confidence, 4),
+                "quarters_ahead": quarters_ahead,
+            })
+
+        return sorted(
+            results,
+            key=lambda item: item["projected_demand_index"],
+            reverse=True,
+        )[:top_n]
 
     def run_experiment(
         self,
@@ -364,9 +413,4 @@ class RolePredictor:
         if self.model is None:
             logger.warning("Role predictor has not been trained yet")
             return []
-        return [
-            {
-                "message": "Demand forecasting requires time-series trend features. "
-                "The current experiment tracker now supports training and registry for role classification."
-            }
-        ]
+        return [{"message": "Use forecast_role_demand with current job records for demand projections."}]

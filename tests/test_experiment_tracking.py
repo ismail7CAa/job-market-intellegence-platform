@@ -37,8 +37,28 @@ class TestRolePredictor:
 
         assert predictor.model is not None
         assert "accuracy" in metrics
+        assert metrics["accuracy"] >= 0.8
+        assert metrics["f1_macro"] >= 0.8
         assert "predicted_role_type" in predictions.columns
         assert len(predictions) == len(eval_frame)
+
+    def test_forecast_role_demand(self):
+        """Test role demand forecasting output shape."""
+        predictor = RolePredictor()
+        train_frame = pd.read_csv(TRAIN_DATA)
+        eval_frame = pd.read_csv(EVAL_DATA)
+
+        predictor.train(train_frame.to_dict(orient="records"))
+        forecast = predictor.forecast_role_demand(
+            eval_frame.to_dict(orient="records"),
+            quarters_ahead=2,
+            top_n=5,
+        )
+
+        assert forecast
+        assert all("role" in item for item in forecast)
+        assert all("confidence_score" in item for item in forecast)
+        assert all(item["quarters_ahead"] == 2 for item in forecast)
 
     def test_run_experiment_with_mlflow(self, tmp_path):
         """Test MLflow experiment execution when MLflow is available."""
@@ -58,5 +78,6 @@ class TestRolePredictor:
 
         assert result["run_id"]
         assert result["experiment_id"]
-        assert result["metrics"]["accuracy"] >= 0
+        assert result["metrics"]["accuracy"] >= 0.8
+        assert result["metrics"]["f1_macro"] >= 0.8
         assert result["registered_model_name"] == "test_role_predictor"

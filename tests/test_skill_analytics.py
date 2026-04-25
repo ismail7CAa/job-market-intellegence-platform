@@ -1,9 +1,19 @@
 """Tests for skill demand analysis."""
 
-import pytest
 from datetime import datetime
+
+import pytest
+
 from src.analytics.skill_demand import SkillDemandAnalyzer
 from src.data_pipeline.models import JobPosting
+
+
+def _dump_jobs(sample_jobs):
+    """Serialize Pydantic jobs compatibly across versions."""
+    return [
+        job.model_dump(mode="json") if hasattr(job, "model_dump") else job.dict()
+        for job in sample_jobs
+    ]
 
 
 class TestSkillDemandAnalyzer:
@@ -79,7 +89,7 @@ class TestSkillDemandAnalyzer:
     
     def test_analyze_jobs(self, analyzer, sample_jobs):
         """Test job analysis."""
-        result = analyzer.analyze_jobs([job.dict() for job in sample_jobs])
+        result = analyzer.analyze_jobs(_dump_jobs(sample_jobs))
         
         assert result['total_jobs'] == 4
         assert result['unique_skills'] > 0
@@ -88,7 +98,7 @@ class TestSkillDemandAnalyzer:
     
     def test_top_skills(self, analyzer, sample_jobs):
         """Test getting top skills."""
-        analyzer.analyze_jobs([job.dict() for job in sample_jobs])
+        analyzer.analyze_jobs(_dump_jobs(sample_jobs))
         top_skills = analyzer.get_trending_skills(top_n=5)
         
         assert len(top_skills) <= 5
@@ -97,7 +107,7 @@ class TestSkillDemandAnalyzer:
     
     def test_salary_premium(self, analyzer, sample_jobs):
         """Test salary premium calculation."""
-        analyzer.analyze_jobs([job.dict() for job in sample_jobs])
+        analyzer.analyze_jobs(_dump_jobs(sample_jobs))
         
         premium = analyzer.get_salary_premium("Python")
         
@@ -108,7 +118,7 @@ class TestSkillDemandAnalyzer:
     
     def test_related_skills(self, analyzer, sample_jobs):
         """Test finding related skills."""
-        analyzer.analyze_jobs([job.dict() for job in sample_jobs])
+        analyzer.analyze_jobs(_dump_jobs(sample_jobs))
         
         related = analyzer.get_related_skills("Python", co_occurrence_threshold=1)
         
@@ -117,14 +127,14 @@ class TestSkillDemandAnalyzer:
     
     def test_skill_categorization(self, analyzer, sample_jobs):
         """Test skill categorization."""
-        result = analyzer.analyze_jobs([job.dict() for job in sample_jobs])
+        result = analyzer.analyze_jobs(_dump_jobs(sample_jobs))
         categories = result.get('skill_categories', {})
         
         assert len(categories) > 0
     
     def test_export_to_dataframe(self, analyzer, sample_jobs):
         """Test DataFrame export."""
-        analyzer.analyze_jobs([job.dict() for job in sample_jobs])
+        analyzer.analyze_jobs(_dump_jobs(sample_jobs))
         df = analyzer.export_to_dataframe()
         
         assert len(df) > 0
@@ -133,7 +143,7 @@ class TestSkillDemandAnalyzer:
     
     def test_report_generation(self, analyzer, sample_jobs):
         """Test report generation."""
-        analyzer.analyze_jobs([job.dict() for job in sample_jobs])
+        analyzer.analyze_jobs(_dump_jobs(sample_jobs))
         report = analyzer.generate_report()
         
         assert isinstance(report, str)

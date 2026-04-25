@@ -1,10 +1,16 @@
 """Data pipeline orchestrator for coordinating data collection and processing."""
 
-import logging
-from typing import List, Optional
-from datetime import datetime
 import json
+import logging
+from collections import Counter
+from datetime import datetime
+from pathlib import Path
+from statistics import mean, median
+from typing import Dict, List
+
+import pandas as pd
 from kafka import KafkaProducer
+
 from .models import JobPosting
 from .scraper import LinkedInScraper, KaggleDataLoader
 
@@ -32,6 +38,15 @@ class DataPipeline:
                 value_serializer=lambda v: json.dumps(v, default=str).encode('utf-8')
             )
         return self._producer
+
+    @staticmethod
+    def _job_to_dict(job: JobPosting | Dict) -> Dict:
+        """Serialize a job posting consistently across Pydantic versions."""
+        if isinstance(job, dict):
+            return job
+        if hasattr(job, "model_dump"):
+            return job.model_dump(mode="json")
+        return job.dict()
 
     def run(
         self,
@@ -75,6 +90,79 @@ class DataPipeline:
         except Exception as e:
             logger.error(f"Pipeline error: {str(e)}")
             raise
+
+    def get_statistics(self) -> Dict:
+        """Return summary statistics for the currently loaded jobs."""
+        if not self.jobs:
+            return {
+                "total_jobs": 0,
+                "locations": 0,
+                "companies": 0,
+                "unique_skills": 0,
+                "salary_stats": {},
+                "top_skills": [],
+                "sources": {},
+            }
+
+        job_dicts = [self._job_to_dict(job) for job in self.jobs]
+        locations = Counter(job["location"] for job in job_dicts if job.get("location"))
+        companies = Counter(job["company"] for job in job_dicts if job.get("company"))
+        skills = Counter(
+            skill
+            for job in job_dicts
+            for skill in job.get("required_skills", [])
+        )
+        sources = Counter(job["source"] for job in job_dicts if job.get("source"))
+
+        salary_values = [
+            (job["salary_min"] + job["salary_max"]) / 2
+            for job in job_dicts
+            if job.get("salary_min") is not None and job.get("salary_max") is not None
+        ]
+
+        salary_stats = {}
+        if salary_values:
+            salary_stats = {
+                "count": len(salary_values),
+                "mean": mean(salary_values),
+                "median": median(salary_values),
+                "min": min(salary_values),
+                "max": max(salary_values),
+            }
+
+        return {
+            "total_jobs": len(job_dicts),
+            "locations": len(locations),
+            "companies": len(companies),
+            "unique_skills": len(skills),
+            "salary_stats": salary_stats,
+            "top_skills": skills.most_common(10),
+            "sources": dict(sources),
+        }
+
+    def save_to_csv(self, output_path: str) -> None:
+        """Persist the current jobs to CSV."""
+        output = Path(output_path)
+        output.parent.mkdir(parents=True, exist_ok=True)
+
+        job_dicts = [self._job_to_dict(job) for job in self.jobs]
+        frame = pd.DataFrame(job_dicts)
+        if "required_skills" in frame.columns:
+            frame["required_skills"] = frame["required_skills"].apply(
+                lambda skills: ";".join(skills) if isinstance(skills, list) else skills
+            )
+        frame.to_csv(output, index=False)
+
+    def save_to_json(self, output_path: str) -> None:
+        """Persist the current jobs to JSON."""
+        output = Path(output_path)
+        output.parent.mkdir(parents=True, exist_ok=True)
+
+        job_dicts = [self._job_to_dict(job) for job in self.jobs]
+        output.write_text(
+            json.dumps(job_dicts, indent=2, ensure_ascii=True),
+            encoding="utf-8",
+        )
 
     def _fetch_from_linkedin(self, keywords: List[str], limit: int) -> None:
         """Fetch jobs from LinkedIn."""
@@ -125,7 +213,7 @@ class DataPipeline:
         logger.info(f"Sending {len(self.jobs)} jobs to Kafka")
         for job in self.jobs:
             try:
-                future = self.producer.send('job_postings', job.dict())
+                future = self.producer.send("job_postings", self._job_to_dict(job))
                 future.get(timeout=10)  # Wait for send to complete
             except Exception as e:
                 logger.error(f"Failed to send job {job.id} to Kafka: {str(e)}")

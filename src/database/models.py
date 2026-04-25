@@ -1,9 +1,10 @@
 """Database models for skill demand and analytics."""
 
-from datetime import datetime
-from sqlalchemy import Column, String, Integer, Float, DateTime, ForeignKey, UniqueConstraint
-from sqlalchemy.ext.declarative import declarative_base
+from datetime import UTC, datetime
+
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import relationship
+from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
 
@@ -16,7 +17,7 @@ class Skill(Base):
     id = Column(String, primary_key=True)
     name = Column(String(100), unique=True, nullable=False, index=True)
     category = Column(String(50))
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     
     # Relationships
     trends = relationship("SkillTrend", back_populates="skill")
@@ -32,12 +33,12 @@ class SkillTrend(Base):
     
     id = Column(String, primary_key=True)
     skill_id = Column(String, ForeignKey("skills.id"), nullable=False, index=True)
-    month = Column(DateTime, nullable=False, index=True)
+    month = Column(DateTime(timezone=True), nullable=False, index=True)
     occurrences = Column(Integer, default=0)
     percentage = Column(Float)
     salary_premium = Column(Float)
     growth_percentage = Column(Float)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     
     __table_args__ = (
         UniqueConstraint("skill_id", "month", name="unique_skill_month"),
@@ -66,8 +67,12 @@ class SalaryData(Base):
     std_dev = Column(Float)
     sample_size = Column(Integer, default=0)
     currency = Column(String(10), default="USD")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
     
     def __repr__(self):
         return f"<SalaryData(role='{self.role}', location='{self.location}', " \
@@ -89,9 +94,13 @@ class JobPosting(Base):
     description = Column(String)
     source = Column(String(50), index=True)
     url = Column(String)
-    posted_date = Column(DateTime, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    posted_date = Column(DateTime(timezone=True), index=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
     
     def __repr__(self):
         return f"<JobPosting(title='{self.title}', company='{self.company}')>"

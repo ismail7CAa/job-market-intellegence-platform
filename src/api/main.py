@@ -1,15 +1,21 @@
 """FastAPI application for Job Market Intelligence Platform."""
 
+from datetime import datetime
+from pathlib import Path
+
+import pandas as pd
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
-from datetime import datetime
-import json
 
-from config.settings import API_HOST, API_PORT, DEBUG, DATABASE_URL
-from src.database import init_database, get_database, SkillRepository, SalaryRepository
+from config.settings import API_HOST, API_PORT, BASE_DIR, DATABASE_URL, DEBUG, MLFLOW_REGISTERED_MODEL_NAME
+from src.analytics.salary_analysis import SalaryAnomalyDetector
+from src.database import init_database
 from src.analytics.skill_demand import SkillDemandAnalyzer
 from src.data_pipeline.pipeline import DataPipeline
+from src.data_pipeline.models import JobPosting
+from src.nlp.query_processor import QueryProcessor
+from src.prediction.role_predictor import RolePredictor
 
 # Initialize database
 try:
@@ -37,6 +43,111 @@ app.add_middleware(
 # Global instances
 analyzer = SkillDemandAnalyzer()
 pipeline = DataPipeline()
+role_predictor = RolePredictor()
+salary_detector = SalaryAnomalyDetector()
+query_processor = QueryProcessor()
+TRAINING_DATA_PATH = BASE_DIR / "data" / "job_postings_training.csv"
+PRODUCTION_DATA_PATH = BASE_DIR / "data" / "job_postings_production.csv"
+
+
+def _serialize_jobs(jobs):
+    """Serialize JobPosting objects consistently across Pydantic versions."""
+    return [
+        job.model_dump(mode="json") if hasattr(job, "model_dump")
+        else job.dict() if hasattr(job, "dict")
+        else job
+        for job in jobs
+    ]
+
+
+def _load_jobs_from_csv(dataset_path: Path) -> list[JobPosting]:
+    """Load sample jobs from a local CSV file."""
+    frame = pd.read_csv(dataset_path, parse_dates=["posted_date"])
+    jobs = []
+    for record in frame.to_dict(orient="records"):
+        jobs.append(
+            JobPosting(
+                id=str(record["id"]),
+                title=record["title"],
+                company=record["company"],
+                location=record["location"],
+                salary_min=record.get("salary_min"),
+                salary_max=record.get("salary_max"),
+                job_type=record.get("job_type", "Full-time"),
+                description=record.get("description", ""),
+                required_skills=[
+                    skill.strip()
+                    for skill in str(record.get("required_skills", "")).split(";")
+                    if skill.strip()
+                ],
+                posted_date=record["posted_date"].to_pydatetime()
+                if hasattr(record["posted_date"], "to_pydatetime")
+                else record["posted_date"],
+                source=record.get("source", "local_csv"),
+            )
+        )
+    return jobs
+
+
+def _ensure_pipeline_jobs_loaded() -> None:
+    """Load local sample jobs when the in-memory pipeline is empty."""
+    if pipeline.jobs:
+        return
+    if PRODUCTION_DATA_PATH.exists():
+        pipeline.jobs = _load_jobs_from_csv(PRODUCTION_DATA_PATH)
+        pipeline.processing_log.append({
+            "source": "local_csv",
+            "job_count": len(pipeline.jobs),
+            "timestamp": datetime.now().isoformat(),
+        })
+
+
+def _ensure_skill_analysis_loaded() -> dict:
+    """Ensure jobs and skill analysis are available for read endpoints."""
+    _ensure_pipeline_jobs_loaded()
+    if not pipeline.jobs:
+        raise HTTPException(status_code=400, detail="No job data available.")
+    job_dicts = _serialize_jobs(pipeline.jobs)
+    if not analyzer.skill_trends:
+        analysis = analyzer.analyze_jobs(job_dicts)
+    else:
+        analysis = analyzer.skill_trends
+    return analysis
+
+
+def _ensure_role_predictor_trained() -> None:
+    """Train the role predictor on local data when needed."""
+    if role_predictor.model is not None:
+        return
+    if not TRAINING_DATA_PATH.exists():
+        raise HTTPException(status_code=500, detail="Training dataset not found.")
+    training_frame = pd.read_csv(TRAINING_DATA_PATH)
+    role_predictor.train(training_frame.to_dict(orient="records"))
+
+
+def _get_role_prediction_payload(quarters_ahead: int) -> dict:
+    """Build a consistent role prediction response payload."""
+    _ensure_pipeline_jobs_loaded()
+    _ensure_role_predictor_trained()
+    if not pipeline.jobs:
+        raise HTTPException(status_code=400, detail="No job data available for role prediction.")
+
+    predictions = role_predictor.forecast_role_demand(
+        _serialize_jobs(pipeline.jobs),
+        quarters_ahead=quarters_ahead,
+        top_n=10,
+    )
+    evaluation_metrics = {}
+    if PRODUCTION_DATA_PATH.exists():
+        evaluation_metrics, _ = role_predictor.evaluate(pd.read_csv(PRODUCTION_DATA_PATH))
+
+    return {
+        "quarters_ahead": quarters_ahead,
+        "predicted_roles": predictions,
+        "model_name": MLFLOW_REGISTERED_MODEL_NAME,
+        "evaluation_metrics": evaluation_metrics,
+        "status": "ready",
+    }
 
 
 @app.get("/")
@@ -118,17 +229,7 @@ async def analyze_skill_demand(
         Skill demand analysis results
     """
     try:
-        if not pipeline.jobs:
-            raise HTTPException(
-                status_code=400,
-                detail="No job data available. Run /data/fetch first."
-            )
-        
-        # Convert JobPosting objects to dicts
-        jobs_data = [job.dict() if hasattr(job, 'dict') else job for job in pipeline.jobs]
-        
-        # Analyze
-        analysis = analyzer.analyze_jobs(jobs_data)
+        analysis = _ensure_skill_analysis_loaded()
         
         if not analysis:
             raise HTTPException(status_code=500, detail="Analysis failed")
@@ -161,12 +262,7 @@ async def get_skill_trends(
     Returns:
         List of trending skills with demand metrics
     """
-    if not analyzer.skill_trends:
-        raise HTTPException(
-            status_code=400,
-            detail="No skill trends available. Run /analyze/skills first."
-        )
-    
+    _ensure_skill_analysis_loaded()
     trending = analyzer.get_trending_skills(top_n=limit)
     
     return {
@@ -187,12 +283,7 @@ async def get_skill_salary_premium(skill_name: str):
     Returns:
         Salary premium analysis for the skill
     """
-    if not analyzer.skill_trends:
-        raise HTTPException(
-            status_code=400,
-            detail="No analysis data available. Run /analyze/skills first."
-        )
-    
+    _ensure_skill_analysis_loaded()
     premium = analyzer.get_salary_premium(skill_name)
     
     if not premium:
@@ -218,12 +309,7 @@ async def get_related_skills(
     Returns:
         List of related skills
     """
-    if not pipeline.jobs:
-        raise HTTPException(
-            status_code=400,
-            detail="No job data available. Run /data/fetch first."
-        )
-    
+    _ensure_skill_analysis_loaded()
     related = analyzer.get_related_skills(skill_name, min_co_occurrence)
     
     return {
@@ -245,12 +331,7 @@ async def predict_roles(
     Returns:
         Predicted roles with confidence scores
     """
-    # Placeholder for role prediction model
-    return {
-        "message": "Role prediction model coming soon",
-        "quarters_ahead": quarters_ahead,
-        "status": "under development"
-    }
+    return _get_role_prediction_payload(quarters_ahead)
 
 
 @app.post("/query")
@@ -263,11 +344,33 @@ async def query_market(question: str):
     Returns:
         Answer to the question
     """
-    # Placeholder for NLP query processor
+    analysis = _ensure_skill_analysis_loaded()
+    anomalies = salary_detector.detect_anomalies(_serialize_jobs(pipeline.jobs))
+    role_prediction = _get_role_prediction_payload(quarters_ahead=1)
+    stats = pipeline.get_statistics()
+    parsed_query = query_processor.process_query(question)
+    subject = parsed_query["query"].get("subject") or ""
+
     return {
         "question": question,
-        "answer": "NLP query processor coming soon",
-        "status": "under development"
+        "parsed_query": parsed_query,
+        "answer": query_processor.answer_question(
+            question,
+            context={
+                "summary": f"Current dataset covers {stats['total_jobs']} jobs across {stats['locations']} locations.",
+                "total_jobs": stats["total_jobs"],
+                "remote_jobs": sum(
+                    1
+                    for job in _serialize_jobs(pipeline.jobs)
+                    if str(job.get("remote_status", "")).lower() == "remote"
+                ),
+                "top_skills": analysis.get("top_skills", []),
+                "anomalies": anomalies,
+                "salary_range": salary_detector.get_salary_range(subject) if subject else {},
+                "predicted_roles": role_prediction["predicted_roles"] if role_prediction else [],
+            },
+        ),
+        "status": "ready",
     }
 
 
@@ -281,12 +384,24 @@ async def get_salary_anomalies(role: str = None):
     Returns:
         List of salary anomalies
     """
-    # Placeholder for salary anomaly detection
+    _ensure_pipeline_jobs_loaded()
+    jobs = _serialize_jobs(pipeline.jobs)
+    filtered_jobs = jobs
+    if role:
+        filtered_jobs = [
+            job for job in jobs
+            if role.lower() in job.get("title", "").lower()
+        ]
+
+    anomalies = salary_detector.detect_anomalies(filtered_jobs)
+    salary_range = salary_detector.get_salary_range(role) if role else None
+
     return {
         "role": role,
-        "anomalies": [],
-        "message": "Salary anomaly detection coming soon",
-        "status": "under development"
+        "salary_range": salary_range,
+        "anomalies": anomalies,
+        "count": len(anomalies),
+        "status": "ready",
     }
 
 
@@ -297,12 +412,7 @@ async def get_skill_report():
     Returns:
         Formatted skill demand report
     """
-    if not analyzer.skill_trends:
-        raise HTTPException(
-            status_code=400,
-            detail="No analysis data available. Run /analyze/skills first."
-        )
-    
+    _ensure_skill_analysis_loaded()
     report = analyzer.generate_report()
     
     return {
@@ -318,12 +428,7 @@ async def export_skills_csv():
     Returns:
         CSV formatted skill data
     """
-    if not analyzer.skill_trends:
-        raise HTTPException(
-            status_code=400,
-            detail="No analysis data available. Run /analyze/skills first."
-        )
-    
+    _ensure_skill_analysis_loaded()
     df = analyzer.export_to_dataframe()
     
     return {
@@ -340,6 +445,7 @@ async def get_pipeline_status():
     Returns:
         Pipeline status and metrics
     """
+    _ensure_pipeline_jobs_loaded()
     return {
         "jobs_loaded": len(pipeline.jobs),
         "processing_log": pipeline.processing_log,
@@ -354,12 +460,7 @@ async def get_job_statistics():
     Returns:
         Job statistics
     """
-    if not pipeline.jobs:
-        return {
-            "total_jobs": 0,
-            "statistics": {}
-        }
-    
+    _ensure_pipeline_jobs_loaded()
     stats = pipeline.get_statistics()
     
     return {
@@ -380,4 +481,3 @@ if __name__ == "__main__":
         port=API_PORT,
         reload=DEBUG
     )
-

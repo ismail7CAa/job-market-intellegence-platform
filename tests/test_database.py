@@ -1,7 +1,8 @@
 """Tests for database models and repositories."""
 
+from datetime import UTC, datetime
+
 import pytest
-from datetime import datetime
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -95,7 +96,7 @@ class TestSkillTrendRepository:
         trend_repo = SkillTrendRepository(db_session)
         trend = trend_repo.create_trend(
             skill_id=skill.id,
-            month=datetime(2026, 4, 1),
+            month=datetime(2026, 4, 1, tzinfo=UTC),
             occurrences=100,
             percentage=5.2,
             salary_premium=15.3
@@ -112,13 +113,13 @@ class TestSkillTrendRepository:
         trend_repo = SkillTrendRepository(db_session)
         created_trend = trend_repo.create_trend(
             skill_id=skill.id,
-            month=datetime(2026, 4, 1),
+            month=datetime(2026, 4, 1, tzinfo=UTC),
             occurrences=100
         )
         
         retrieved_trend = trend_repo.get_trend_by_skill_and_month(
             skill_id=skill.id,
-            month=datetime(2026, 4, 1)
+            month=datetime(2026, 4, 1, tzinfo=UTC)
         )
         
         assert retrieved_trend.id == created_trend.id
@@ -195,8 +196,8 @@ class TestJobPostingRepository:
     def test_get_recent_jobs(self, db_session):
         """Test retrieving recent jobs."""
         repo = JobPostingRepository(db_session)
-        repo.create_job("Job1", "Corp", "City", posted_date=datetime.utcnow())
-        repo.create_job("Job2", "Corp", "City", posted_date=datetime.utcnow())
+        repo.create_job("Job1", "Corp", "City", posted_date=datetime.now(UTC))
+        repo.create_job("Job2", "Corp", "City", posted_date=datetime.now(UTC))
         
         jobs = repo.get_recent_jobs(days=30, limit=10)
         
