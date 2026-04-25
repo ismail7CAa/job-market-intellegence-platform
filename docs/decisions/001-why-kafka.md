@@ -101,6 +101,4 @@ Negative consequences:
 - debugging infrastructure issues is harder than in a direct-write design
 - operating Kafka in production will require more care than a simpler queueing choice
 
-## Notes
 
-This decision does not claim Kafka is universally better than RabbitMQ. It is a fit-for-purpose choice based on this project’s event-streaming goals, multi-consumer potential, and data-platform orientation.
