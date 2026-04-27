@@ -8,12 +8,20 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
-from config.settings import API_HOST, API_PORT, BASE_DIR, DATABASE_URL, DEBUG, MLFLOW_REGISTERED_MODEL_NAME
+from config.settings import (
+    API_HOST,
+    API_PORT,
+    DATABASE_URL,
+    DEBUG,
+    MLFLOW_REGISTERED_MODEL_NAME,
+    get_settings,
+)
 from src.analytics.salary_analysis import SalaryAnomalyDetector
 from src.database import init_database
 from src.analytics.skill_demand import SkillDemandAnalyzer
 from src.data_pipeline.pipeline import DataPipeline
 from src.data_pipeline.models import JobPosting
+from src.nlp.market_agent import MarketIntelligenceAgent
 from src.nlp.query_processor import QueryProcessor
 from src.prediction.role_predictor import RolePredictor
 
@@ -32,9 +40,10 @@ app = FastAPI(
 )
 
 # CORS middleware
+settings = get_settings()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -46,8 +55,9 @@ pipeline = DataPipeline()
 role_predictor = RolePredictor()
 salary_detector = SalaryAnomalyDetector()
 query_processor = QueryProcessor()
-TRAINING_DATA_PATH = BASE_DIR / "data" / "job_postings_training.csv"
-PRODUCTION_DATA_PATH = BASE_DIR / "data" / "job_postings_production.csv"
+market_agent = MarketIntelligenceAgent(salary_detector=salary_detector)
+TRAINING_DATA_PATH = settings.training_data_path
+PRODUCTION_DATA_PATH = settings.production_data_path
 
 
 def _serialize_jobs(jobs):
@@ -135,7 +145,7 @@ def _get_role_prediction_payload(quarters_ahead: int) -> dict:
     predictions = role_predictor.forecast_role_demand(
         _serialize_jobs(pipeline.jobs),
         quarters_ahead=quarters_ahead,
-        top_n=10,
+        top_n=settings.role_prediction_top_n,
     )
     evaluation_metrics = {}
     if PRODUCTION_DATA_PATH.exists():
@@ -180,9 +190,9 @@ async def health_check():
 
 @app.post("/data/fetch")
 async def fetch_data(
-    sources: list[str] = Query(["linkedin", "kaggle"]),
-    keywords: list[str] = Query(["Python Developer", "Data Scientist"]),
-    limit: int = Query(100, ge=10, le=1000)
+    sources: list[str] = Query(settings.default_sources),
+    keywords: list[str] = Query(settings.default_keywords),
+    limit: int = Query(settings.default_limit_per_source, ge=10, le=1000)
 ):
     """Fetch job data from configured sources.
     
@@ -371,6 +381,24 @@ async def query_market(question: str):
             },
         ),
         "status": "ready",
+    }
+
+
+@app.post("/agent/explain")
+async def explain_with_agent(question: str, job_id: str = None):
+    """Ask the agent to explain an analytics or model output with evidence."""
+    _ensure_pipeline_jobs_loaded()
+    if not pipeline.jobs:
+        raise HTTPException(status_code=400, detail="No job data available.")
+
+    result = market_agent.answer(
+        question=question,
+        jobs=_serialize_jobs(pipeline.jobs),
+        job_id=job_id,
+    )
+    return {
+        "question": question,
+        **result,
     }
 
 

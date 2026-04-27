@@ -44,3 +44,21 @@ class TestApiEndpoints:
         assert payload["role"] == "Data Scientist"
         assert "anomalies" in payload
         assert "salary_range" in payload
+
+    def test_agent_explain_endpoint(self):
+        """Agent endpoint should return a grounded salary anomaly explanation."""
+        response = client.post(
+            "/agent/explain",
+            params={
+                "question": "Why did the model flag this salary as anomalous?",
+                "job_id": "prod_005",
+            },
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["status"] == "ready"
+        assert payload["intent"] == "explain_salary_anomaly"
+        assert payload["evidence"]["job"]["id"] == "prod_005"
+        assert "tool_trace" in payload
+        assert "flagged because" in payload["answer"]
