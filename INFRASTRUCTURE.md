@@ -63,7 +63,12 @@ cp .env.example .env
 # 3. Start local environment
 bash scripts/dev-setup.sh
 
-# 4. Access the application
+# 4. Run local developer workflows
+make test
+make ingest
+make serve
+
+# 5. Access the application
 # API: http://localhost:8000
 # Docs: http://localhost:8000/docs
 ```
