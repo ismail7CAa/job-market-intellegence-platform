@@ -1,13 +1,16 @@
 """Tests for the data pipeline."""
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
+import pandas as pd
+import pandera.errors as pa_errors
 import pytest
 
 from src.data_pipeline.models import JobPosting
 from src.data_pipeline.scraper import LinkedInScraper, KaggleDataLoader
 from src.data_pipeline.pipeline import DataPipeline
+from src.data_pipeline.validation import validate_job_postings
 
 
 class TestJobPostingModel:
@@ -97,6 +100,27 @@ class TestKaggleDataLoader:
         assert all(isinstance(job, JobPosting) for job in jobs)
         assert all(job.source == "kaggle" for job in jobs)
 
+    def test_parse_kaggle_job_treats_zero_salary_as_missing(self):
+        """Test sparse Kaggle rows do not create fake zero salaries."""
+        loader = KaggleDataLoader()
+        row = pd.Series(
+            {
+                "id": "row_1",
+                "job_title": "Data Analyst",
+                "company_name": "Data Co",
+                "location": "Remote",
+                "min_salary": 0,
+                "max_salary": 0,
+                "job_type": "Full-time",
+                "job_description": "SQL and Python analytics",
+            }
+        )
+
+        job = loader._parse_kaggle_job(row)
+
+        assert job.salary_min is None
+        assert job.salary_max is None
+
 
 class TestDataPipeline:
     """Test the data pipeline."""
@@ -120,6 +144,21 @@ class TestDataPipeline:
         assert isinstance(jobs, list)
         assert all(isinstance(job, JobPosting) for job in jobs)
         assert len(pipeline.processing_log) > 0
+
+    def test_pipeline_output_matches_schema_contract(self):
+        """Test successful pipeline output satisfies the dataframe schema."""
+        pipeline = DataPipeline()
+        pipeline.run(
+            sources=["linkedin", "kaggle"],
+            keywords=["Python Developer"],
+            limit_per_source=2
+        )
+
+        validated = validate_job_postings(pipeline.jobs)
+
+        assert len(validated) == len(pipeline.jobs)
+        assert validated["id"].notna().all()
+        assert validated["posted_date"].notna().all()
 
     def test_get_statistics(self):
         """Test pipeline statistics generation."""
@@ -161,6 +200,64 @@ class TestDataPipeline:
         payload = json.loads(json_path.read_text(encoding="utf-8"))
         assert len(payload) == len(pipeline.jobs)
         assert all("title" in item for item in payload)
+
+    def test_validation_rejects_negative_salary(self):
+        """Test dataframe contract rejects impossible salary values."""
+        invalid_job = JobPosting(
+            id="job_bad_salary",
+            title="Data Engineer",
+            company="Example Corp",
+            location="Remote",
+            salary_min=-1,
+            salary_max=120000,
+            job_type="Full-time",
+            description="Build data pipelines",
+            required_skills=["Python", "SQL"],
+            posted_date=datetime.now(),
+            source="linkedin",
+        )
+
+        with pytest.raises(pa_errors.SchemaErrors):
+            validate_job_postings([invalid_job])
+
+    def test_validation_rejects_future_posted_date(self):
+        """Test dataframe contract rejects timestamps beyond current time."""
+        future_job = JobPosting(
+            id="job_future",
+            title="Analytics Engineer",
+            company="Example Corp",
+            location="Remote",
+            salary_min=100000,
+            salary_max=130000,
+            job_type="Full-time",
+            description="Own analytics models",
+            required_skills=["Python", "SQL"],
+            posted_date=datetime.now() + timedelta(days=1),
+            source="kaggle",
+        )
+
+        with pytest.raises(pa_errors.SchemaErrors):
+            validate_job_postings([future_job])
+
+    def test_validation_rejects_null_required_column(self):
+        """Test dataframe contract requires core fields before export."""
+        invalid_job = {
+            "id": "job_missing_company",
+            "title": "Python Developer",
+            "company": None,
+            "location": "Austin, TX",
+            "salary_min": 100000,
+            "salary_max": 140000,
+            "currency": "USD",
+            "job_type": "Full-time",
+            "description": "Build APIs",
+            "required_skills": ["Python"],
+            "posted_date": datetime.now(),
+            "source": "linkedin",
+        }
+
+        with pytest.raises(pa_errors.SchemaErrors):
+            validate_job_postings([invalid_job])
 
 
 if __name__ == "__main__":

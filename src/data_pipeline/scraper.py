@@ -6,6 +6,8 @@ import requests
 import pandas as pd
 from abc import ABC, abstractmethod
 from datetime import datetime
+from pathlib import Path
+from config.settings import get_settings
 from .models import JobPosting
 
 logger = logging.getLogger(__name__)
@@ -29,12 +31,13 @@ class LinkedInScraper(DataSource):
         Args:
             api_key: LinkedIn API key for authentication
         """
-        self.api_key = api_key
+        settings = get_settings()
+        self.api_key = api_key if api_key is not None else settings.linkedin_api_key
         self.base_url = "https://api.linkedin.com/v2"
         self.session = requests.Session()
-        if api_key:
+        if self.api_key:
             self.session.headers.update({
-                "Authorization": f"Bearer {api_key}",
+                "Authorization": f"Bearer {self.api_key}",
                 "Accept": "application/json"
             })
 
@@ -149,15 +152,17 @@ class LinkedInScraper(DataSource):
 class KaggleDataLoader(DataSource):
     """Load job market data from Kaggle datasets."""
 
-    def __init__(self, dataset_id: str = None, api_key: str = None):
+    def __init__(self, dataset_id: str = None, api_key: str = None, raw_data_dir: str | Path = None):
         """Initialize Kaggle data loader.
         
         Args:
             dataset_id: Kaggle dataset ID or slug
             api_key: Kaggle API key
         """
-        self.dataset_id = dataset_id
-        self.api_key = api_key
+        settings = get_settings()
+        self.dataset_id = dataset_id if dataset_id is not None else settings.kaggle_dataset_id
+        self.api_key = api_key if api_key is not None else settings.kaggle_api_key
+        self.raw_data_dir = Path(raw_data_dir) if raw_data_dir is not None else settings.kaggle_raw_data_dir
 
     def fetch(self, limit: int = 1000) -> List[JobPosting]:
         """Load and parse Kaggle dataset.
@@ -181,7 +186,7 @@ class KaggleDataLoader(DataSource):
             api.authenticate()
             
             # Download dataset
-            api.dataset_download_files(self.dataset_id, path="data/raw", unzip=True)
+            api.dataset_download_files(self.dataset_id, path=str(self.raw_data_dir), unzip=True)
             
             # Load and parse CSV files
             jobs = self._load_csv_files(limit)
@@ -198,7 +203,7 @@ class KaggleDataLoader(DataSource):
         import glob
         jobs = []
         
-        csv_files = glob.glob("data/raw/*.csv")
+        csv_files = glob.glob(str(self.raw_data_dir / "*.csv"))
         for csv_file in csv_files:
             try:
                 df = pd.read_csv(csv_file)
@@ -222,8 +227,8 @@ class KaggleDataLoader(DataSource):
                 title=row.get("job_title", row.get("title", "")),
                 company=row.get("company_name", row.get("company", "")),
                 location=row.get("location", ""),
-                salary_min=float(row.get("min_salary", 0)) if pd.notna(row.get("min_salary")) else None,
-                salary_max=float(row.get("max_salary", 0)) if pd.notna(row.get("max_salary")) else None,
+                salary_min=self._parse_salary_value(row.get("min_salary")),
+                salary_max=self._parse_salary_value(row.get("max_salary")),
                 job_type=row.get("job_type", "Full-time"),
                 description=row.get("job_description", row.get("description", "")),
                 required_skills=self._extract_skills_from_description(
@@ -235,6 +240,14 @@ class KaggleDataLoader(DataSource):
         except Exception as e:
             logger.warning(f"Failed to parse Kaggle job: {str(e)}")
             return None
+
+    @staticmethod
+    def _parse_salary_value(value) -> Optional[float]:
+        """Return a positive salary value or None when the source is missing it."""
+        if pd.isna(value):
+            return None
+        salary = float(value)
+        return salary if salary > 0 else None
 
     def _extract_skills_from_description(self, text: str) -> List[str]:
         """Extract required skills from job description text."""

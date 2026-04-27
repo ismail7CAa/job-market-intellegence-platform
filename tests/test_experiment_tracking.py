@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from config.settings import get_settings
 from src.prediction.role_predictor import RolePredictor
 
 
@@ -15,6 +16,44 @@ EVAL_DATA = PROJECT_ROOT / "data" / "job_postings_production.csv"
 
 class TestRolePredictor:
     """Test suite for RolePredictor."""
+
+    def test_parse_skill_list_feature_engineering(self):
+        """Test skill parsing handles CSV strings, lists, and missing values."""
+        assert RolePredictor._parse_skill_list("Python; SQL ; ;Docker") == [
+            "Python",
+            "SQL",
+            "Docker",
+        ]
+        assert RolePredictor._parse_skill_list(["Python", "  FastAPI  ", None]) == [
+            "Python",
+            "FastAPI",
+        ]
+        assert RolePredictor._parse_skill_list(None) == []
+
+    def test_prepare_training_frame_feature_defaults(self):
+        """Test feature engineering fills optional columns with stable defaults."""
+        predictor = RolePredictor()
+        raw = pd.DataFrame(
+            [
+                {
+                    "title": "Data Engineer",
+                    "description": "Build Python pipelines",
+                    "required_skills": "Python;SQL",
+                    "salary_min": 100000,
+                    "salary_max": 140000,
+                    "role_type": "data_engineering",
+                }
+            ]
+        )
+
+        frame = predictor.prepare_training_frame(raw)
+
+        assert frame.loc[0, "skill_count"] == 2
+        assert frame.loc[0, "salary_avg"] == 120000
+        assert frame.loc[0, "source"] == "unknown"
+        assert frame.loc[0, "remote_status"] == "unknown"
+        assert frame.loc[0, "location"] == "unknown"
+        assert frame.loc[0, "combined_text"] == "Data Engineer Build Python pipelines Python SQL"
 
     def test_prepare_training_frame(self):
         """Test feature preparation from raw CSV data."""
@@ -27,7 +66,8 @@ class TestRolePredictor:
         assert frame["salary_avg"].notna().all()
 
     def test_train_and_evaluate(self):
-        """Test local model training and evaluation."""
+        """Test local model performance does not regress below baseline."""
+        settings = get_settings()
         predictor = RolePredictor()
         train_frame = pd.read_csv(TRAIN_DATA)
         eval_frame = pd.read_csv(EVAL_DATA)
@@ -37,8 +77,8 @@ class TestRolePredictor:
 
         assert predictor.model is not None
         assert "accuracy" in metrics
-        assert metrics["accuracy"] >= 0.8
-        assert metrics["f1_macro"] >= 0.8
+        assert metrics["accuracy"] >= settings.role_predictor_baseline_accuracy
+        assert metrics["f1_macro"] >= settings.role_predictor_baseline_f1_macro
         assert "predicted_role_type" in predictions.columns
         assert len(predictions) == len(eval_frame)
 

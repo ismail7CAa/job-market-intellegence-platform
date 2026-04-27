@@ -8,11 +8,12 @@ from pathlib import Path
 from statistics import mean, median
 from typing import Dict, List
 
-import pandas as pd
 from kafka import KafkaProducer
 
+from config.settings import get_settings
 from .models import JobPosting
 from .scraper import LinkedInScraper, KaggleDataLoader
+from .validation import validate_job_postings
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +23,17 @@ class DataPipeline:
 
     def __init__(self, kafka_bootstrap_servers: str = None):
         """Initialize the data pipeline."""
+        settings = get_settings()
         self.jobs: List[JobPosting] = []
         self.linkedin_scraper = LinkedInScraper()
         self.kaggle_loader = KaggleDataLoader()
         self.processing_log = []
-        self.kafka_bootstrap_servers = kafka_bootstrap_servers
+        self.kafka_bootstrap_servers = (
+            kafka_bootstrap_servers
+            if kafka_bootstrap_servers is not None
+            else settings.kafka_bootstrap_servers
+        )
+        self.kafka_topic = settings.kafka_topic
         self._producer = None
 
     @property
@@ -65,9 +72,9 @@ class DataPipeline:
             Dict with processing statistics
         """
         if sources is None:
-            sources = ["linkedin", "kaggle"]
+            sources = get_settings().default_sources
         if keywords is None:
-            keywords = ["Python Developer", "Data Scientist", "DevOps Engineer"]
+            keywords = get_settings().default_keywords
 
         logger.info(f"Starting data pipeline with sources: {sources}")
         start_time = datetime.now()
@@ -79,6 +86,8 @@ class DataPipeline:
                     self._fetch_from_linkedin(keywords, limit_per_source)
                 elif source.lower() == "kaggle":
                     self._fetch_from_kaggle(limit_per_source)
+
+            validate_job_postings(self.jobs)
 
             # Send jobs to Kafka
             self._send_to_kafka()
@@ -146,7 +155,7 @@ class DataPipeline:
         output.parent.mkdir(parents=True, exist_ok=True)
 
         job_dicts = [self._job_to_dict(job) for job in self.jobs]
-        frame = pd.DataFrame(job_dicts)
+        frame = validate_job_postings(job_dicts)
         if "required_skills" in frame.columns:
             frame["required_skills"] = frame["required_skills"].apply(
                 lambda skills: ";".join(skills) if isinstance(skills, list) else skills
@@ -159,6 +168,7 @@ class DataPipeline:
         output.parent.mkdir(parents=True, exist_ok=True)
 
         job_dicts = [self._job_to_dict(job) for job in self.jobs]
+        validate_job_postings(job_dicts)
         output.write_text(
             json.dumps(job_dicts, indent=2, ensure_ascii=True),
             encoding="utf-8",
@@ -209,11 +219,13 @@ class DataPipeline:
         if not self.producer:
             logger.warning("Kafka producer not configured, skipping send to Kafka")
             return
-        
+
+        validate_job_postings(self.jobs)
+
         logger.info(f"Sending {len(self.jobs)} jobs to Kafka")
         for job in self.jobs:
             try:
-                future = self.producer.send("job_postings", self._job_to_dict(job))
+                future = self.producer.send(self.kafka_topic, self._job_to_dict(job))
                 future.get(timeout=10)  # Wait for send to complete
             except Exception as e:
                 logger.error(f"Failed to send job {job.id} to Kafka: {str(e)}")

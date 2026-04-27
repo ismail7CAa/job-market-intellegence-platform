@@ -3,11 +3,12 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 import sys
-import os
 
 # Add src to path
+sys.path.append('/app')
 sys.path.append('/app/src')
 
+from config.settings import get_settings
 from data_pipeline.pipeline import DataPipeline
 
 default_args = {
@@ -31,7 +32,8 @@ dag = DAG(
 
 def run_data_pipeline(**kwargs):
     """Run the data pipeline."""
-    pipeline = DataPipeline(kafka_bootstrap_servers='kafka:9092')
+    settings = get_settings()
+    pipeline = DataPipeline(kafka_bootstrap_servers=settings.kafka_bootstrap_servers)
     result = pipeline.run()
     print(f"Pipeline completed: {result}")
     return result

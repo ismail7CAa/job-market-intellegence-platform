@@ -18,7 +18,7 @@ from sklearn.metrics import accuracy_score, classification_report, f1_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, StandardScaler
 
-from config.settings import MLFLOW_REGISTERED_MODEL_NAME
+from config.settings import MLFLOW_REGISTERED_MODEL_NAME, get_settings
 from src.experiments import MLflowExperimentTracker
 
 logger = logging.getLogger(__name__)
@@ -27,10 +27,17 @@ logger = logging.getLogger(__name__)
 class RolePredictor:
     """Predict which roles will spike in demand next quarter."""
 
-    def __init__(self, random_state: int = 42):
+    def __init__(self, random_state: Optional[int] = None):
         """Initialize the role prediction model."""
+        settings = get_settings()
         self.model = None
-        self.random_state = random_state
+        self.random_state = (
+            random_state
+            if random_state is not None
+            else settings.role_predictor_random_state
+        )
+        self.max_iter = settings.role_predictor_max_iter
+        self.growth_per_quarter = settings.role_demand_growth_per_quarter
         self.label_column = "role_type"
         self.feature_columns = [
             "combined_text",
@@ -60,7 +67,11 @@ class RolePredictor:
             return []
         if isinstance(raw_skills, str):
             return [skill.strip() for skill in raw_skills.split(";") if skill.strip()]
-        return [str(skill).strip() for skill in raw_skills if str(skill).strip()]
+        return [
+            str(skill).strip()
+            for skill in raw_skills
+            if skill is not None and str(skill).strip()
+        ]
 
     def prepare_training_frame(
         self,
@@ -148,7 +159,7 @@ class RolePredictor:
                 (
                     "classifier",
                     LogisticRegression(
-                        max_iter=1000,
+                        max_iter=self.max_iter,
                         random_state=self.random_state,
                         class_weight="balanced",
                     ),
@@ -253,7 +264,7 @@ class RolePredictor:
             confidences = [1.0] * len(predictions)
 
         summary: Dict[str, Dict[str, float]] = {}
-        growth_factor = 1 + (0.08 * quarters_ahead)
+        growth_factor = 1 + (self.growth_per_quarter * quarters_ahead)
         for prediction, confidence in zip(predictions, confidences):
             if prediction not in summary:
                 summary[prediction] = {"count": 0, "confidence_total": 0.0}
@@ -335,6 +346,8 @@ class RolePredictor:
             "eval_rows": len(eval_frame),
             "feature_count": len(self.feature_columns),
             "random_state": self.random_state,
+            "max_iter": self.max_iter,
+            "growth_per_quarter": self.growth_per_quarter,
             "model_type": "logistic_regression",
             "text_vectorizer": "tfidf_unigram_bigram",
             "registered_model_name": registered_model_name,

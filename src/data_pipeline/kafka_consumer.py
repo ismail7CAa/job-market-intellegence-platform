@@ -6,25 +6,36 @@ from kafka import KafkaConsumer
 from google.cloud import bigquery
 from datetime import datetime
 
+from config.settings import get_settings
+
 logger = logging.getLogger(__name__)
 
 class JobPostingConsumer:
     """Consumes job postings from Kafka and loads to BigQuery."""
 
-    def __init__(self, kafka_bootstrap_servers: str = "localhost:9092",
-                 bigquery_project: str = "your-gcp-project-id",
-                 bigquery_dataset: str = "bronze"):
+    def __init__(self, kafka_bootstrap_servers: str = None,
+                 bigquery_project: str = None,
+                 bigquery_dataset: str = None):
+        settings = get_settings()
+        kafka_bootstrap_servers = kafka_bootstrap_servers or settings.kafka_bootstrap_servers
+        bigquery_project = bigquery_project or settings.bigquery_project
+        bigquery_dataset = bigquery_dataset or settings.bigquery_dataset
+        if not kafka_bootstrap_servers:
+            raise ValueError("KAFKA_BOOTSTRAP_SERVERS must be configured to run the consumer.")
+        if not bigquery_project:
+            raise ValueError("BIGQUERY_PROJECT must be configured to run the consumer.")
+
         self.consumer = KafkaConsumer(
-            'job_postings',
+            settings.kafka_topic,
             bootstrap_servers=[kafka_bootstrap_servers],
             value_deserializer=lambda m: json.loads(m.decode('utf-8')),
             auto_offset_reset='earliest',
             enable_auto_commit=True,
-            group_id='job_posting_consumers'
+            group_id=settings.kafka_consumer_group_id
         )
         self.bq_client = bigquery.Client(project=bigquery_project)
         self.dataset_id = bigquery_dataset
-        self.table_id = f"{bigquery_project}.{bigquery_dataset}.raw_job_postings"
+        self.table_id = f"{bigquery_project}.{bigquery_dataset}.{settings.bigquery_table}"
 
     def create_table_if_not_exists(self):
         """Create BigQuery table if it doesn't exist."""

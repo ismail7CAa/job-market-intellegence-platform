@@ -5,12 +5,16 @@ import sys
 from pathlib import Path
 from loguru import logger
 
+from config.settings import get_settings
+
 # Configure logging
 logger.remove()
 logger.add(sys.stderr, format="<level>{level: <8}</level> | <cyan>{name}</cyan> - <level>{message}</level>")
 
 from src.data_pipeline.pipeline import DataPipeline
 from src.prediction.role_predictor import RolePredictor
+
+settings = get_settings()
 
 
 @click.group()
@@ -24,26 +28,26 @@ def cli():
     "--source",
     "-s",
     multiple=True,
-    default=["linkedin", "kaggle"],
+    default=settings.default_sources,
     help="Data source (linkedin, kaggle)"
 )
 @click.option(
     "--keyword",
     "-k",
     multiple=True,
-    default=["Python Developer", "Data Scientist", "DevOps Engineer"],
+    default=settings.default_keywords,
     help="Job search keywords"
 )
 @click.option(
     "--limit",
     "-l",
-    default=100,
+    default=settings.default_limit_per_source,
     help="Max jobs per source"
 )
 @click.option(
     "--output",
     "-o",
-    default="data/jobs.csv",
+    default=str(settings.default_jobs_output_path),
     help="Output file path"
 )
 def fetch(source, keyword, limit, output):
@@ -99,7 +103,7 @@ def fetch(source, keyword, limit, output):
 @click.option(
     "--input",
     "-i",
-    default="data/jobs.csv",
+    default=str(settings.default_jobs_output_path),
     help="Input file path"
 )
 def analyze(input):
@@ -140,12 +144,12 @@ def analyze(input):
 @cli.command("track-experiment")
 @click.option(
     "--train-data",
-    default="data/job_postings_training.csv",
+    default=str(settings.training_data_path),
     help="Training dataset path"
 )
 @click.option(
     "--eval-data",
-    default="data/job_postings_production.csv",
+    default=str(settings.production_data_path),
     help="Evaluation dataset path"
 )
 @click.option(
