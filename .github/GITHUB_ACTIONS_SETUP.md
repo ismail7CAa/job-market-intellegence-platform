@@ -4,17 +4,19 @@
 
 Add these secrets to your GitHub repository settings:
 
-### AWS Secrets
+### AWS Free-Tier EC2 Secrets
 ```
-AWS_ACCESS_KEY_ID          - Your AWS access key
-AWS_SECRET_ACCESS_KEY      - Your AWS secret access key
-AWS_REGION                 - AWS region (e.g., us-east-1)
+EC2_HOST                   - EC2 public DNS name or public IP
+EC2_USER                   - SSH user, usually ubuntu or ec2-user
+EC2_SSH_KEY                - Private SSH key with access to the EC2 host
+EC2_DB_PASSWORD            - Password for the local Postgres container
 ```
 
-### ECS Secrets
+Optional:
+
 ```
-ECS_CLUSTER                - ECS cluster name (created by Terraform)
-ECS_SERVICE                - ECS service name (created by Terraform)
+EC2_PORT                   - SSH port, defaults to 22
+EC2_APP_DIR                - Remote app directory, defaults to ~/job-market-intelligence-platform
 ```
 
 ### How to Add Secrets
@@ -53,30 +55,23 @@ The CI/CD pipeline runs automatically on:
 
 ### 3. Deploy (main branch only)
 ```
-✓ Configure AWS credentials
-✓ Update ECS service with new image
-✓ Force new deployment
+✓ Connect to the EC2 host over SSH
+✓ Copy docker-compose.free-tier.yml and database/init.sql
+✓ Pull the GHCR image
+✓ Restart the app and local Postgres with Docker Compose
 ```
 
-## IAM Policy (AWS)
+## EC2 Host Setup
 
-Attach this policy to the IAM user for CI/CD:
+Create one AWS free-tier eligible EC2 instance and install Docker plus the Docker Compose plugin.
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ecs:UpdateService",
-        "ecs:DescribeServices"
-      ],
-      "Resource": "arn:aws:ecs:*:*:service/*/*"
-    }
-  ]
-}
+```bash
+sudo apt-get update
+sudo apt-get install -y docker.io docker-compose-plugin
+sudo usermod -aG docker "$USER"
 ```
+
+Open inbound port `22` for SSH and `8000` for the API in the EC2 security group. No AWS access keys, ECS cluster, ALB, NAT gateway, or RDS database are required for this deployment path.
 
 ## Environment Variables
 
@@ -120,11 +115,11 @@ docker build -t test:latest .
 
 ### Deployment failing
 ```bash
-# Check AWS credentials
-aws sts get-caller-identity
+# Check SSH connectivity
+ssh ubuntu@<EC2_HOST>
 
-# Verify ECS cluster exists
-aws ecs list-clusters
+# Check Docker on the EC2 host
+docker compose version
 ```
 
 ## Manual Deployment
@@ -132,25 +127,16 @@ aws ecs list-clusters
 If automated deployment fails:
 
 ```bash
-# Update ECS service manually
-aws ecs update-service \
-  --cluster jmip-cluster \
-  --service jmip-service \
-  --force-new-deployment
+bash scripts/deploy.sh
 ```
 
 ## Monitoring Deployments
 
-### CloudWatch
+### EC2 Docker Logs
 ```bash
-# View recent deployments
-aws ecs describe-services \
-  --cluster jmip-cluster \
-  --services jmip-service
+cd ~/job-market-intelligence-platform
+docker compose -f docker-compose.free-tier.yml ps
+docker compose -f docker-compose.free-tier.yml logs -f app
 ```
 
-### ECS Console
-1. Go to AWS ECS Console
-2. Select cluster: `jmip-cluster`
-3. Select service: `jmip-service`
-4. View task status and logs
+The API is exposed on `http://<EC2_HOST>:8000`.

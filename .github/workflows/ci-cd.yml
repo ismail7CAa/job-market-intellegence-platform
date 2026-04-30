@@ -109,33 +109,56 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # Deploy to AWS
+  # Deploy to AWS free-tier EC2
   deploy:
     needs: build
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: read
+    env:
+      APP_DIR: ${{ secrets.EC2_APP_DIR || '~/job-market-intelligence-platform' }}
+      APP_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main
 
     steps:
       - uses: actions/checkout@v3
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Deploy to ECS
+      - name: Prepare SSH key
         run: |
-          echo "Deploying to AWS ECS..."
-          # ECS deployment script would go here
-          aws ecs update-service \
-            --cluster ${{ secrets.ECS_CLUSTER }} \
-            --service ${{ secrets.ECS_SERVICE }} \
-            --force-new-deployment
-        continue-on-error: true
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/jmip_deploy_key
+          chmod 600 ~/.ssh/jmip_deploy_key
+          ssh-keyscan -p "${{ secrets.EC2_PORT || 22 }}" "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Copy free-tier compose file
+        run: |
+          ssh -i ~/.ssh/jmip_deploy_key -p "${{ secrets.EC2_PORT || 22 }}" "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" "mkdir -p ${APP_DIR}/database"
+          scp -i ~/.ssh/jmip_deploy_key -P "${{ secrets.EC2_PORT || 22 }}" docker-compose.free-tier.yml "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${APP_DIR}/docker-compose.free-tier.yml"
+          scp -i ~/.ssh/jmip_deploy_key -P "${{ secrets.EC2_PORT || 22 }}" database/init.sql "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${APP_DIR}/database/init.sql"
+
+      - name: Deploy on EC2
+        run: |
+          ssh -i ~/.ssh/jmip_deploy_key -p "${{ secrets.EC2_PORT || 22 }}" "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" <<EOF
+          set -e
+          cd ${APP_DIR}
+
+          cat > .env <<ENVEOF
+          APP_IMAGE=${APP_IMAGE}
+          DB_USER=jobmarket
+          DB_PASSWORD=${{ secrets.EC2_DB_PASSWORD }}
+          DB_NAME=job_market
+          DEBUG=false
+          LOG_LEVEL=INFO
+          ENVEOF
+
+          echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker compose -f docker-compose.free-tier.yml pull
+          docker compose -f docker-compose.free-tier.yml up -d --remove-orphans
+          docker image prune -f
+          EOF
 
       - name: Notify deployment
         if: success()
         run: |
-          echo "✅ Deployment successful"
+          echo "Deployment successful on AWS free-tier EC2"

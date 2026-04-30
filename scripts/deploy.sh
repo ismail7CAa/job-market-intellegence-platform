@@ -1,83 +1,86 @@
 #!/bin/bash
+set -euo pipefail
+
+echo "Deploying Job Market Intelligence Platform to an AWS free-tier EC2 host..."
+echo ""
+
+if ! command -v ssh >/dev/null 2>&1; then
+    echo "ssh not found. Please install OpenSSH first."
+    exit 1
+fi
+
+if ! command -v scp >/dev/null 2>&1; then
+    echo "scp not found. Please install OpenSSH first."
+    exit 1
+fi
+
+read -p "EC2 host or public IP: " EC2_HOST
+read -p "EC2 SSH user (default: ubuntu): " EC2_USER
+EC2_USER=${EC2_USER:-ubuntu}
+
+read -p "SSH key path (default: ~/.ssh/id_rsa): " EC2_SSH_KEY
+EC2_SSH_KEY=${EC2_SSH_KEY:-~/.ssh/id_rsa}
+EC2_SSH_KEY=${EC2_SSH_KEY/#\~/$HOME}
+
+read -p "Remote app directory (default: ~/job-market-intelligence-platform): " EC2_APP_DIR
+EC2_APP_DIR=${EC2_APP_DIR:-~/job-market-intelligence-platform}
+
+read -p "Container image URI (for example ghcr.io/user/repo:main): " APP_IMAGE
+if [[ -z "$APP_IMAGE" ]]; then
+    echo "Container image URI is required."
+    exit 1
+fi
+
+read -p "GHCR username for private images (optional): " GHCR_USERNAME
+GHCR_TOKEN=""
+if [[ -n "$GHCR_USERNAME" ]]; then
+    read -rsp "GHCR token with package read access: " GHCR_TOKEN
+    echo ""
+fi
+
+read -p "Database user (default: jobmarket): " DB_USER
+DB_USER=${DB_USER:-jobmarket}
+
+read -p "Database name (default: job_market): " DB_NAME
+DB_NAME=${DB_NAME:-job_market}
+
+read -rsp "Database password: " DB_PASSWORD
+echo ""
+if [[ -z "$DB_PASSWORD" ]]; then
+    echo "Database password is required."
+    exit 1
+fi
+
+echo "Preparing remote directory..."
+ssh -i "$EC2_SSH_KEY" "$EC2_USER@$EC2_HOST" "mkdir -p $EC2_APP_DIR/database"
+
+echo "Copying deployment files..."
+scp -i "$EC2_SSH_KEY" docker-compose.free-tier.yml "$EC2_USER@$EC2_HOST:$EC2_APP_DIR/docker-compose.free-tier.yml"
+scp -i "$EC2_SSH_KEY" database/init.sql "$EC2_USER@$EC2_HOST:$EC2_APP_DIR/database/init.sql"
+
+echo "Starting containers on EC2..."
+ssh -i "$EC2_SSH_KEY" "$EC2_USER@$EC2_HOST" <<EOF
 set -e
+cd $EC2_APP_DIR
 
-echo " Deploying Job Market Intelligence Platform..."
-echo ""
+cat > .env <<ENVEOF
+APP_IMAGE=$APP_IMAGE
+DB_USER=$DB_USER
+DB_PASSWORD=$DB_PASSWORD
+DB_NAME=$DB_NAME
+DEBUG=false
+LOG_LEVEL=INFO
+ENVEOF
 
-# Check AWS CLI
-if ! command -v aws &> /dev/null; then
-    echo " AWS CLI not found. Please install it first."
-    exit 1
+if [[ -n "$GHCR_USERNAME" && -n "$GHCR_TOKEN" ]]; then
+    echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USERNAME" --password-stdin
 fi
 
-# Check Terraform
-if ! command -v terraform &> /dev/null; then
-    echo " Terraform not found. Please install it first."
-    exit 1
-fi
-
-# Get AWS region
-read -p "Enter AWS region (default: us-east-1): " AWS_REGION
-AWS_REGION=${AWS_REGION:-us-east-1}
-
-# Get environment
-read -p "Enter environment (dev/staging/prod): " ENVIRONMENT
-ENVIRONMENT=${ENVIRONMENT:-dev}
-
-# Get Docker image
-read -p "Enter Docker image URI: " DOCKER_IMAGE
-
-# Get database password
-read -sp "Enter database password: " DB_PASSWORD
-echo ""
-
-# Create terraform.tfvars
-cat > terraform/terraform.tfvars <<EOF
-aws_region          = "$AWS_REGION"
-environment         = "$ENVIRONMENT"
-container_image     = "$DOCKER_IMAGE"
-db_password         = "$DB_PASSWORD"
-enable_rds          = true
-enable_elasticache  = false
-desired_count       = $([[ "$ENVIRONMENT" == "prod" ]] && echo "3" || echo "1")
+docker compose -f docker-compose.free-tier.yml pull
+docker compose -f docker-compose.free-tier.yml up -d --remove-orphans
+docker image prune -f
 EOF
 
-echo "Created terraform.tfvars"
-
-# Initialize Terraform
-cd terraform
-echo "Initializing Terraform..."
-terraform init
-
-# Validate
-echo "✔️  Validating Terraform..."
-terraform validate
-
-# Plan
-echo "Creating Terraform plan..."
-terraform plan -out=tfplan
-
-# Apply
-read -p "Apply Terraform changes? (yes/no): " APPLY
-if [[ "$APPLY" == "yes" ]]; then
-    echo "🔨 Applying Terraform configuration..."
-    terraform apply tfplan
-    
-    # Get outputs
-    echo ""
-    echo "Infrastructure deployed successfully!"
-    echo ""
-    echo "Outputs:"
-    terraform output
-else
-    echo "⏭️  Skipped Terraform apply"
-fi
-
-cd ..
-
 echo ""
-echo "Next steps:"
-echo "1. Push Docker image to AWS ECR"
-echo "2. Update ECS service with new image"
-echo "3. Configure GitHub Actions secrets"
-echo "4. Set up monitoring and alerts"
+echo "Deployment complete."
+echo "API: http://$EC2_HOST:8000"

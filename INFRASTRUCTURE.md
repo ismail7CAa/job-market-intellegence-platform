@@ -1,44 +1,23 @@
 # Infrastructure Setup Guide
 
-Complete AWS deployment infrastructure with CI/CD, Docker, Kubernetes, and IaC.
+Free-tier AWS deployment path with CI/CD and Docker, plus optional ECS/Terraform scaffolding for later production hardening.
 
 ## Architecture Overview
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    GitHub Actions CI/CD                 │
-│  (Test → Build Docker → Push to ECR → Deploy to ECS)   │
+│  (Test → Build Docker → Push to GHCR → Deploy to EC2)  │
 └────────┬────────────────────────────────────────────────┘
          │
          ▼
 ┌─────────────────────────────────────────────────────────┐
-│              AWS Infrastructure (Terraform)              │
+│              AWS Free-Tier EC2 Host                      │
 ├─────────────────────────────────────────────────────────┤
-│  ┌──────────────────────────────────────────────────┐   │
-│  │         VPC (10.0.0.0/16)                        │   │
-│  │  ┌────────────────────────────────────────────┐  │   │
-│  │  │  Public Subnets (Load Balancer)           │  │   │
-│  │  └────────────────┬───────────────────────────┘  │   │
-│  │                   │                               │   │
-│  │  ┌────────────────▼───────────────────────────┐  │   │
-│  │  │  ALB (Application Load Balancer)          │  │   │
-│  │  └────────────────┬───────────────────────────┘  │   │
-│  │                   │                               │   │
-│  │  ┌────────────────▼───────────────────────────┐  │   │
-│  │  │  Private Subnets (ECS Fargate)            │  │   │
-│  │  │  - Task Definition                       │  │   │
-│  │  │  - Service (Desired: 2-3 tasks)         │  │   │
-│  │  │  - Auto Scaling (2-4 replicas)          │  │   │
-│  │  └────────────────┬───────────────────────────┘  │   │
-│  │                   │                               │   │
-│  │  ┌────────────────┼───────────────────────────┐  │   │
-│  │  │                │                           │  │   │
-│  │  ▼                ▼                           ▼  │   │
-│  │ RDS            Redis              Secrets Manager │   │
-│  │ PostgreSQL     ElastiCache        (DB passwords)  │   │
-│  │ (Multi-AZ)     (Optional)                         │   │
-│  │                                                    │   │
-│  └────────────────────────────────────────────────────┘   │
+│  Docker Compose                                           │
+│  - FastAPI app from GHCR                                  │
+│  - Local Postgres container with persistent volume         │
+│  - No ECS, ALB, NAT gateway, RDS, or ElastiCache required  │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -81,56 +60,45 @@ make serve
 bash scripts/build-docker.sh job-market-intelligence-platform v1.0.0
 ```
 
-### Push to AWS ECR
+### Push to GitHub Container Registry
 
-```bash
-# Login to ECR
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <ACCOUNT-ID>.dkr.ecr.us-east-1.amazonaws.com
+The GitHub Actions workflow pushes images to GHCR automatically after tests pass.
 
-# Tag image
-docker tag job-market-intelligence-platform:v1.0.0 <ACCOUNT-ID>.dkr.ecr.us-east-1.amazonaws.com/job-market-intelligence-platform:v1.0.0
-
-# Push
-docker push <ACCOUNT-ID>.dkr.ecr.us-east-1.amazonaws.com/job-market-intelligence-platform:v1.0.0
-```
-
-## AWS Deployment with Terraform
+## AWS Free-Tier EC2 Deployment
 
 ### Prerequisites
-- AWS CLI configured
-- Terraform >= 1.0
-- AWS credentials with permissions
+- One free-tier eligible EC2 instance
+- Docker and the Docker Compose plugin installed on the EC2 host
+- Security group inbound rules for SSH `22` and API traffic `8000`
+- A deploy SSH key stored in GitHub Actions secrets
 
-### Deploy to AWS
+### GitHub Actions Secrets
+
+```
+EC2_HOST
+EC2_USER
+EC2_SSH_KEY
+EC2_DB_PASSWORD
+```
+
+Optional:
+
+```
+EC2_PORT
+EC2_APP_DIR
+```
+
+### Deploy Manually
 
 ```bash
-# 1. Initialize Terraform
-cd terraform
-terraform init
-
-# 2. Create terraform.tfvars
-cat > terraform.tfvars <<EOF
-aws_region         = "us-east-1"
-environment        = "prod"
-container_image    = "your-account-id.dkr.ecr.us-east-1.amazonaws.com/job-market-intelligence-platform:v1.0.0"
-db_password        = "your_secure_password"
-enable_rds         = true
-enable_elasticache = false
-desired_count      = 2
-EOF
-
-# 3. Validate
-terraform validate
-
-# 4. Plan
-terraform plan -out=tfplan
-
-# 5. Apply
-terraform apply tfplan
-
-# 6. Get outputs
-terraform output
+bash scripts/deploy.sh
 ```
+
+The script copies `docker-compose.free-tier.yml` and `database/init.sql` to the EC2 host, writes a remote `.env`, pulls the configured image, and restarts the app with Docker Compose.
+
+## Optional AWS ECS/Terraform Deployment
+
+The `terraform/` directory remains as production-oriented scaffolding. It provisions ECS Fargate, an Application Load Balancer, private networking, optional RDS, and optional ElastiCache. That path is not the default because those resources can create ongoing AWS charges.
 
 ### Terraform Structure
 
@@ -157,16 +125,15 @@ terraform/
 2. **Lint**: Pylint and Black code quality checks
 3. **Build**: Multi-stage Docker build
 4. **Push**: Push to GitHub Container Registry (GHCR)
-5. **Deploy**: Deploy to AWS ECS (main branch only)
+5. **Deploy**: Deploy to AWS free-tier EC2 with Docker Compose (main branch only)
 
 ### GitHub Secrets Required
 
 ```
-AWS_ACCESS_KEY_ID
-AWS_SECRET_ACCESS_KEY
-AWS_REGION
-ECS_CLUSTER
-ECS_SERVICE
+EC2_HOST
+EC2_USER
+EC2_SSH_KEY
+EC2_DB_PASSWORD
 ```
 
 ## Kubernetes Deployment
@@ -254,39 +221,30 @@ Configure in Terraform:
 - Failed tasks
 - Database connection errors
 
-## Costs Estimation (AWS)
+## Cost Notes
 
-| Component | Type | Estimate |
-|-----------|------|----------|
-| ECS Fargate | 2 tasks (0.25 CPU, 512 MB) | ~$15/month |
-| RDS PostgreSQL | db.t3.micro | ~$20/month |
-| Application Load Balancer | ALB | ~$20/month |
-| Data Transfer | Outbound | ~$5/month |
-| **Total** | | **~$60/month** |
-
-*Note: Production setup (multi-AZ, larger instances) will cost more.*
+The default deployment path is designed for a free-tier eligible EC2 instance and local Docker containers. Avoid enabling the Terraform ECS path unless you intentionally want managed AWS resources such as ALB, NAT gateways, RDS, and Fargate.
 
 ## Troubleshooting
 
-### ECS Task won't start
+### EC2 container won't start
 ```bash
-# Check task logs
-aws logs tail /ecs/jmip --follow
+cd ~/job-market-intelligence-platform
+docker compose -f docker-compose.free-tier.yml logs -f app
 ```
 
 ### Database connection error
 ```bash
-# Verify security group allows inbound
-aws ec2 describe-security-groups --query "SecurityGroups[?GroupName=='jmip-rds-sg']"
+docker compose -f docker-compose.free-tier.yml logs -f postgres
 ```
 
 ### Deployment failed
 ```bash
-# Check Terraform state
-terraform show | grep -i error
+# Check SSH access
+ssh ubuntu@<EC2_HOST>
 
-# Force refresh
-terraform refresh
+# Check remote containers
+docker compose -f ~/job-market-intelligence-platform/docker-compose.free-tier.yml ps
 ```
 
 ## Security Best Practices
@@ -302,7 +260,13 @@ terraform refresh
 
 ## Cleanup
 
-### Delete AWS Resources
+### Stop EC2 Deployment
+```bash
+cd ~/job-market-intelligence-platform
+docker compose -f docker-compose.free-tier.yml down
+```
+
+### Delete Optional Terraform Resources
 ```bash
 cd terraform
 terraform destroy

@@ -9,7 +9,7 @@ The project is built as a portfolio-grade slice of a real analytics system: type
 - API docs: [http://localhost:8000/docs](http://localhost:8000/docs) after running `make serve`
 - Health check: [http://localhost:8000/health](http://localhost:8000/health) after running `make serve`
 
-Public cloud deployment is staged behind the included Docker, Kubernetes, Terraform, and AWS ECS scaffolding. See [INFRASTRUCTURE.md](INFRASTRUCTURE.md) for the deployment path.
+Public cloud deployment now defaults to a free-tier AWS EC2 path using Docker Compose and GHCR images, with Terraform/ECS kept as optional production scaffolding. See [INFRASTRUCTURE.md](INFRASTRUCTURE.md) for the deployment path.
 
 ## System Architecture
 
@@ -140,7 +140,7 @@ When live-ingested jobs are not loaded yet, the API can fall back to the local s
 - `src/database/`: SQLAlchemy models and repository helpers
 - `tests/`: pipeline, schema, feature engineering, model regression, analytics, database, and API tests
 - `airflow/`, `dbt/`, `feast/`: orchestration, transformation, and feature-store scaffolding
-- `terraform/`, `k8s/`, `Dockerfile`, `docker-compose.yml`: deployment and infrastructure scaffolding
+- `docker-compose.free-tier.yml`, `terraform/`, `k8s/`, `Dockerfile`, `docker-compose.yml`: free-tier deployment and infrastructure scaffolding
 
 ## Current Status
 

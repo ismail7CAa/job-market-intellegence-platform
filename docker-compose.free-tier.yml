@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: jmip_postgres
+    environment:
+      POSTGRES_USER: ${DB_USER:-jobmarket}
+      POSTGRES_PASSWORD: "${DB_PASSWORD}"
+      POSTGRES_DB: ${DB_NAME:-job_market}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-jobmarket}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  app:
+    image: ${APP_IMAGE}
+    container_name: jmip_app
+    environment:
+      DATABASE_URL: "postgresql://${DB_USER:-jobmarket}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-job_market}"
+      DEBUG: "${DEBUG:-false}"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      LINKEDIN_API_KEY: ${LINKEDIN_API_KEY:-}
+      KAGGLE_API_KEY: ${KAGGLE_API_KEY:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
