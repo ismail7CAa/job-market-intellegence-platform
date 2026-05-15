@@ -44,6 +44,9 @@ data/raw/
 data/processed/
 *.csv
 *.json
+!data/job_postings_training.csv
+!data/job_postings_production.csv
+data/job_market.db
 
 # Tests
 .pytest_cache/

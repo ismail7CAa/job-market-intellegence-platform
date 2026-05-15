@@ -1,0 +1,11 @@
+id,title,company,location,description,salary_min,salary_max,required_skills,posted_date,source,remote_status,role_type
+train_001,Data Scientist,DataLab Berlin GmbH,"Berlin, Germany",Modeling product and customer data for German SaaS teams.,68000,88000,"Python;SQL;Machine Learning",2025-12-01,kaggle,hybrid,Data Science
+train_002,Backend Engineer,CloudWerk GmbH,"Munich, Germany",Building FastAPI services and internal platform APIs.,72000,95000,"Python;Docker;Kubernetes",2025-12-02,linkedin,hybrid,Engineering
+train_003,Machine Learning Engineer,AutoAI Stuttgart GmbH,"Stuttgart, Germany",Training and deploying ML models for mobility use cases.,78000,105000,"Python;PyTorch;SQL",2025-12-03,kaggle,onsite,Engineering
+train_004,DevOps Engineer,InfraHaus GmbH,"Hamburg, Germany",Automating CI/CD and observability for cloud workloads.,70000,92000,"Terraform;Kubernetes;Docker",2025-12-04,linkedin,remote,DevOps
+train_005,Data Analyst,Rhein Insights GmbH,"Cologne, Germany",Business reporting and KPI dashboards for operations teams.,52000,68000,"SQL;Tableau;Excel",2025-12-05,kaggle,hybrid,Data
+train_006,Full Stack Developer,WebManufaktur GmbH,"Leipzig, Germany",Developing React and Node.js applications for B2B products.,60000,82000,"JavaScript;React;Node.js",2025-12-06,linkedin,remote,Engineering
+train_007,Product Manager,ScaleUp Berlin GmbH,"Berlin, Germany",Managing roadmap discovery and stakeholder alignment.,65000,85000,"Agile;Communication;Leadership",2025-12-07,kaggle,hybrid,Product
+train_008,Data Engineer,StreamLake GmbH,"Frankfurt, Germany",Building ETL pipelines and analytics data platforms.,72000,96000,"Python;Spark;SQL",2025-12-08,linkedin,remote,Engineering
+train_009,AI Researcher,AppliedAI Munich GmbH,"Munich, Germany",Experimental applied AI research for enterprise systems.,82000,112000,"Python;TensorFlow;Research",2025-12-09,kaggle,hybrid,Research
+train_010,Cloud Architect,EuroCloud Systems GmbH,"Dusseldorf, Germany",Designing secure AWS landing zones and cloud architecture.,85000,115000,"AWS;Terraform;Security",2025-12-10,linkedin,hybrid,Architecture
