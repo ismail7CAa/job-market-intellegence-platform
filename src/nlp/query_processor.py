@@ -10,9 +10,10 @@ logger = logging.getLogger(__name__)
 class QueryProcessor:
     """Process natural language questions about the job market."""
 
-    def __init__(self, model_name: str = "bert-base-uncased"):
+    def __init__(self, model_name: str = "bert-base-uncased", currency: str = "EUR"):
         """Initialize NLP query processor with a language model."""
         self.model_name = model_name
+        self.currency = currency
         self.model = None
 
     def process_query(self, question: str) -> Dict[str, Any]:
@@ -21,7 +22,10 @@ class QueryProcessor:
         normalized = question.lower().strip()
         intent = "summary"
 
-        if any(keyword in normalized for keyword in ["top skill", "most in-demand skill", "trending skill"]):
+        if (
+            any(keyword in normalized for keyword in ["top skill", "top 3 skill", "most in-demand skill", "trending skill"])
+            or ("top" in normalized and "skills" in normalized)
+        ):
             intent = "top_skills"
         elif any(keyword in normalized for keyword in ["salary anomaly", "salary outlier", "anomalies"]):
             intent = "salary_anomalies"
@@ -70,8 +74,8 @@ class QueryProcessor:
             if salary_range.get("count", 0) == 0:
                 return "I could not find salary data for that role in the current dataset."
             return (
-                f"{salary_range['role']} currently ranges from ${salary_range['min']:,.0f} "
-                f"to ${salary_range['max']:,.0f}, with a median of ${salary_range['median']:,.0f}."
+                f"{salary_range['role']} currently ranges from {salary_range['min']:,.0f} {self.currency} "
+                f"to {salary_range['max']:,.0f} {self.currency}, with a median of {salary_range['median']:,.0f} {self.currency}."
             )
 
         if parsed["intent"] == "predicted_roles" and context.get("predicted_roles"):

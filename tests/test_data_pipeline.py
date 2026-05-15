@@ -51,7 +51,7 @@ class TestJobPostingModel:
         )
         
         assert job.salary_min is None
-        assert job.currency == "USD"
+        assert job.currency == "EUR"
         assert job.required_skills == []
 
 

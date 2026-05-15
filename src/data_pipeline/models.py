@@ -14,7 +14,7 @@ class JobPosting(BaseModel):
     location: str
     salary_min: Optional[float] = None
     salary_max: Optional[float] = None
-    currency: str = "USD"
+    currency: str = "EUR"
     job_type: str  # Full-time, Part-time, Contract, etc.
     description: str
     required_skills: List[str] = Field(default_factory=list)
@@ -27,11 +27,11 @@ class JobPosting(BaseModel):
             "example": {
                 "id": "job_001",
                 "title": "Senior Python Developer",
-                "company": "Tech Corp",
-                "location": "San Francisco, CA",
-                "salary_min": 120000,
-                "salary_max": 180000,
-                "currency": "USD",
+                "company": "Berlin Analytics GmbH",
+                "location": "Berlin, Germany",
+                "salary_min": 70000,
+                "salary_max": 95000,
+                "currency": "EUR",
                 "job_type": "Full-time",
                 "description": "Looking for experienced Python developers...",
                 "required_skills": ["Python", "FastAPI", "Docker"],
@@ -61,7 +61,7 @@ class SalaryData(BaseModel):
     max_salary: float
     median_salary: float
     sample_size: int
-    currency: str = "USD"
+    currency: str = "EUR"
     last_updated: datetime = Field(default_factory=datetime.now)
 
 

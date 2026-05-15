@@ -66,6 +66,8 @@ class AppSettings(BaseSettings):
     api_host: str = Field(default="0.0.0.0", validation_alias="API_HOST")
     api_port: int = Field(default=8000, validation_alias="API_PORT")
     debug: bool = Field(default=False, validation_alias="DEBUG")
+    market_region: str = Field(default="Germany", validation_alias="MARKET_REGION")
+    default_currency: str = Field(default="EUR", validation_alias="DEFAULT_CURRENCY")
     cors_allow_origins: List[str] = Field(
         default_factory=lambda: ["*"],
         validation_alias="CORS_ALLOW_ORIGINS",
@@ -79,7 +81,11 @@ class AppSettings(BaseSettings):
         validation_alias="DEFAULT_SOURCES",
     )
     default_keywords: List[str] = Field(
-        default_factory=lambda: ["Python Developer", "Data Scientist", "DevOps Engineer"],
+        default_factory=lambda: [
+            "Data Engineer Berlin",
+            "Machine Learning Engineer Germany",
+            "Cloud Engineer Munich",
+        ],
         validation_alias="DEFAULT_KEYWORDS",
     )
     default_limit_per_source: int = Field(default=100, validation_alias="DEFAULT_LIMIT_PER_SOURCE")
@@ -163,6 +169,8 @@ API_PORT = settings.api_port
 DEBUG = settings.debug
 NLP_MODEL = settings.nlp_model
 LOG_LEVEL = settings.log_level
+MARKET_REGION = settings.market_region
+DEFAULT_CURRENCY = settings.default_currency
 MLFLOW_TRACKING_URI = settings.mlflow_tracking_uri
 MLFLOW_ARTIFACT_ROOT = settings.mlflow_artifact_root
 MLFLOW_EXPERIMENT_NAME = settings.mlflow_experiment_name
