@@ -23,6 +23,8 @@ services:
       DATABASE_URL: "postgresql://${DB_USER:-jobmarket}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-job_market}"
       DEBUG: "${DEBUG:-false}"
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      MARKET_REGION: "${MARKET_REGION:-Germany}"
+      DEFAULT_CURRENCY: "${DEFAULT_CURRENCY:-EUR}"
       API_HOST: 0.0.0.0
       API_PORT: 8000
       LINKEDIN_API_KEY: ${LINKEDIN_API_KEY:-}

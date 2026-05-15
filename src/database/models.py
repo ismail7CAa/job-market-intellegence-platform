@@ -66,7 +66,7 @@ class SalaryData(Base):
     mean_salary = Column(Float)
     std_dev = Column(Float)
     sample_size = Column(Integer, default=0)
-    currency = Column(String(10), default="USD")
+    currency = Column(String(10), default="EUR")
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at = Column(
         DateTime(timezone=True),

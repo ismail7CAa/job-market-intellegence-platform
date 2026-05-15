@@ -1,6 +1,6 @@
 # Infrastructure Setup Guide
 
-Free-tier AWS deployment path with CI/CD and Docker, plus optional ECS/Terraform scaffolding for later production hardening.
+One-EC2 AWS deployment path with CI/CD and Docker, plus optional ECS/Terraform scaffolding for later production hardening. This is the low-cost portfolio route: keep the app on a single free-tier eligible EC2 instance where possible, avoid managed resources that introduce standing charges, and add AWS Budget alerts before exposing it publicly.
 
 ## Architecture Overview
 
@@ -12,11 +12,12 @@ Free-tier AWS deployment path with CI/CD and Docker, plus optional ECS/Terraform
          │
          ▼
 ┌─────────────────────────────────────────────────────────┐
-│              AWS Free-Tier EC2 Host                      │
+│              AWS EC2 Portfolio Demo Host                 │
 ├─────────────────────────────────────────────────────────┤
 │  Docker Compose                                           │
 │  - FastAPI app from GHCR                                  │
 │  - Local Postgres container with persistent volume         │
+│  - German job-market demo data and EUR salary defaults     │
 │  - No ECS, ALB, NAT gateway, RDS, or ElastiCache required  │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -64,13 +65,14 @@ bash scripts/build-docker.sh job-market-intelligence-platform v1.0.0
 
 The GitHub Actions workflow pushes images to GHCR automatically after tests pass.
 
-## AWS Free-Tier EC2 Deployment
+## AWS One-EC2 Deployment
 
 ### Prerequisites
-- One free-tier eligible EC2 instance
+- One free-tier eligible EC2 instance where your AWS account plan allows it
 - Docker and the Docker Compose plugin installed on the EC2 host
 - Security group inbound rules for SSH `22` and API traffic `8000`
 - A deploy SSH key stored in GitHub Actions secrets
+- AWS Budget alert set to a very small threshold before deployment
 
 ### GitHub Actions Secrets
 
@@ -94,7 +96,14 @@ EC2_APP_DIR
 bash scripts/deploy.sh
 ```
 
-The script copies `docker-compose.free-tier.yml` and `database/init.sql` to the EC2 host, writes a remote `.env`, pulls the configured image, and restarts the app with Docker Compose.
+The script copies `docker-compose.free-tier.yml` and `database/init.sql` to the EC2 host, writes a remote `.env`, pulls the configured image, and restarts the app with Docker Compose. The deployed app uses a Postgres container on the EC2 instance, not RDS.
+
+### What to Avoid for the No-Surprise-Cost Portfolio Demo
+
+- Do not run `terraform apply` unless you intentionally want managed AWS resources.
+- Do not create RDS, Application Load Balancers, NAT Gateways, ElastiCache, or ECS/Fargate services for the first demo.
+- Do not reserve an Elastic IP for this portfolio version unless you have confirmed the current AWS IPv4 pricing for your account.
+- Stop or delete the EC2 instance when you are done demonstrating the project.
 
 ## Optional AWS ECS/Terraform Deployment
 
@@ -223,7 +232,7 @@ Configure in Terraform:
 
 ## Cost Notes
 
-The default deployment path is designed for a free-tier eligible EC2 instance and local Docker containers. Avoid enabling the Terraform ECS path unless you intentionally want managed AWS resources such as ALB, NAT gateways, RDS, and Fargate.
+The default deployment path is designed for one EC2 instance and local Docker containers. Avoid enabling the Terraform ECS path unless you intentionally want managed AWS resources such as ALB, NAT gateways, RDS, and Fargate. Public IPv4 addresses may create charges depending on the active AWS pricing model for your account, so configure AWS Budgets before deployment.
 
 ## Troubleshooting
 
@@ -249,14 +258,17 @@ docker compose -f ~/job-market-intelligence-platform/docker-compose.free-tier.ym
 
 ## Security Best Practices
 
-✅ Implemented:
+Implemented in the one-EC2 path:
 - Non-root Docker user
-- Secrets Manager for passwords
+- Environment-based deployment secrets
+- Security group can be restricted to SSH and port `8000`
+- Docker health check on `/health`
+- Local Postgres volume for persistence
+
+Production scaffolding only:
 - VPC with public/private subnets
-- Security groups with minimal permissions
-- Multi-AZ for production
-- Encrypted RDS storage
-- Health checks and auto-recovery
+- Secrets Manager-style separation
+- RDS/ElastiCache/ECS resources
 
 ## Cleanup
 
