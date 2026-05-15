@@ -107,6 +107,74 @@ Outcome:
 
 - the repository now presents a clearer and more credible project narrative
 
+### 7. Deployment Path Could Accidentally Become Too Expensive
+
+The repository included Terraform, ECS, Kubernetes, RDS, and other production-style infrastructure scaffolding. Those components are useful for showing future direction, but they are not the right default for a portfolio deployment on a newly activated AWS account because they can create ongoing charges.
+
+Solved by:
+
+- making one EC2 instance with Docker Compose the default deployment path
+- keeping Postgres as a local container with a persistent Docker volume
+- documenting which AWS services to avoid for the first public demo
+- wiring GitHub Actions and the manual deploy script around the EC2 path
+
+Outcome:
+
+- the project now has a practical low-cost deployment story
+- the production scaffolding remains available without being the default path
+- the public demo can be launched without introducing RDS, ECS, ALB, NAT Gateway, or Kubernetes costs
+
+### 8. Database Setup Was Not Fully Aligned with the Application Models
+
+The deployment SQL file was named `init.sql`, but it still contained shell-script lines and had column definitions that did not fully match the SQLAlchemy models. That mismatch could cause confusing behavior when the app starts against Postgres on EC2.
+
+Solved by:
+
+- converting `database/init.sql` into valid PostgreSQL SQL
+- aligning table columns with the SQLAlchemy models
+- adding the expected indexes and uniqueness constraint
+- changing salary defaults from USD to EUR for the German market demo
+- adding a real database health check through SQLAlchemy
+
+Outcome:
+
+- the EC2 Postgres container can initialize with the schema expected by the app
+- `/health` now checks an actual database query instead of only checking whether initialization happened
+- the database layer is more credible as part of the portfolio demo
+
+### 9. The Demo Needed a Clear Market Focus
+
+The sample data and public-facing API text were still mostly generic or US-oriented. For a portfolio project, a focused market story is stronger than a vague global one.
+
+Solved by:
+
+- shifting the project narrative toward the German tech job market
+- replacing local sample CSVs with German cities, companies, and EUR salaries
+- updating default search keywords toward German roles and locations
+- turning the root API route into a small portfolio landing page
+
+Outcome:
+
+- the public demo has a clearer audience and purpose
+- salary and location outputs are internally consistent
+- recruiters or reviewers can understand the product surface immediately from `/`
+
+### 10. Live Data Collection Was Not Yet Safe Enough for a Public Demo
+
+The project supports real ingestion paths conceptually, but fully live collection has practical and legal constraints: job-board access rules, API credentials, rate limits, dataset licensing, unstable schemas, and data quality drift.
+
+Solved by:
+
+- using a small, committed German demo dataset for the public portfolio version
+- keeping API keys and source-specific ingestion configurable for later
+- documenting demo data as a deliberate decision rather than pretending it is full production ingestion
+
+Outcome:
+
+- the deployed app is reproducible and reliable for reviewers
+- the system can demonstrate analytics, ML, and API behavior without depending on external credentials
+- future live-data work remains possible once a compliant data source is chosen
+
 ## Current State
 
 At this stage, the platform now has:
@@ -118,6 +186,9 @@ At this stage, the platform now has:
 - a working MLflow-backed experiment tracking workflow
 - a materially improved role prediction baseline
 - API endpoints with real behavior for several previously unfinished areas
+- a Germany-focused portfolio demo dataset
+- a one-EC2 Docker Compose deployment path
+- a Postgres schema aligned with the application models
 - test coverage validating the updated functionality
 
 ## Why This Matters
