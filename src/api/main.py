@@ -6,7 +6,9 @@ from pathlib import Path
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from loguru import logger
+from sqlalchemy import text
 
 from config.settings import (
     API_HOST,
@@ -34,8 +36,8 @@ except Exception as e:
     _db = None
 
 app = FastAPI(
-    title="Job Market Intelligence Platform",
-    description="Analyze job market trends, skill demand, and predict future roles",
+    title="German Job Market Intelligence Platform",
+    description="Analyze German tech job trends, skill demand, salaries, and role forecasts",
     version="0.1.0"
 )
 
@@ -54,7 +56,7 @@ analyzer = SkillDemandAnalyzer()
 pipeline = DataPipeline()
 role_predictor = RolePredictor()
 salary_detector = SalaryAnomalyDetector()
-query_processor = QueryProcessor()
+query_processor = QueryProcessor(currency=settings.default_currency)
 market_agent = MarketIntelligenceAgent(salary_detector=salary_detector)
 TRAINING_DATA_PATH = settings.training_data_path
 PRODUCTION_DATA_PATH = settings.production_data_path
@@ -162,27 +164,234 @@ def _get_role_prediction_payload(quarters_ahead: int) -> dict:
 
 @app.get("/")
 async def root():
-    """Root endpoint."""
-    return {
-        "message": "Welcome to Job Market Intelligence Platform",
-        "status": "under deployment",
-        "version": "0.1.0",
-        "endpoints": {
-            "health": "/health",
-            "trends": "/trends/skills",
-            "predict": "/predict/roles",
-            "query": "/query",
-            "salary": "/salary/anomalies"
-        }
-    }
+    """Portfolio landing page for the live German market demo."""
+    _ensure_pipeline_jobs_loaded()
+    stats = pipeline.get_statistics()
+    try:
+        analysis = _ensure_skill_analysis_loaded()
+        top_skills = analysis.get("top_skills", [])[:5]
+    except Exception:
+        top_skills = []
+
+    salary_stats = stats.get("salary_stats", {})
+    median_salary = int(salary_stats.get("median", 0)) if salary_stats else 0
+    top_skill_rows = "".join(
+        f"<li><span>{skill.get('skill', 'Unknown')}</span><strong>{skill.get('demand', 0)}</strong></li>"
+        for skill in top_skills
+    )
+    if not top_skill_rows:
+        top_skill_rows = "<li><span>No skill data loaded</span><strong>0</strong></li>"
+
+    return HTMLResponse(
+        f"""
+        <!doctype html>
+        <html lang="en">
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>German Job Market Intelligence</title>
+          <style>
+            :root {{
+              color-scheme: light;
+              --ink: #17202a;
+              --muted: #5d6875;
+              --line: #d9e0e7;
+              --panel: #f6f8fa;
+              --accent: #0f766e;
+              --accent-2: #b45309;
+              --surface: #ffffff;
+            }}
+            * {{ box-sizing: border-box; }}
+            body {{
+              margin: 0;
+              font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+              background: var(--surface);
+              color: var(--ink);
+            }}
+            main {{
+              width: min(1120px, calc(100% - 32px));
+              margin: 0 auto;
+              padding: 48px 0;
+            }}
+            .hero {{
+              display: grid;
+              grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+              gap: 32px;
+              align-items: center;
+              min-height: 62vh;
+            }}
+            h1 {{
+              margin: 0;
+              max-width: 760px;
+              font-size: clamp(40px, 7vw, 76px);
+              line-height: 0.96;
+              letter-spacing: 0;
+            }}
+            .lede {{
+              max-width: 660px;
+              margin: 22px 0 0;
+              color: var(--muted);
+              font-size: 19px;
+              line-height: 1.6;
+            }}
+            .actions {{
+              display: flex;
+              flex-wrap: wrap;
+              gap: 12px;
+              margin-top: 28px;
+            }}
+            a {{
+              color: inherit;
+              text-decoration: none;
+            }}
+            .button {{
+              display: inline-flex;
+              align-items: center;
+              min-height: 44px;
+              padding: 0 16px;
+              border: 1px solid var(--line);
+              background: var(--ink);
+              color: white;
+              font-weight: 700;
+            }}
+            .button.secondary {{
+              background: white;
+              color: var(--ink);
+            }}
+            .snapshot {{
+              border: 1px solid var(--line);
+              background: var(--panel);
+              padding: 22px;
+            }}
+            .metric-grid {{
+              display: grid;
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+              gap: 12px;
+            }}
+            .metric {{
+              min-height: 108px;
+              padding: 16px;
+              background: white;
+              border: 1px solid var(--line);
+            }}
+            .metric span {{
+              display: block;
+              color: var(--muted);
+              font-size: 13px;
+            }}
+            .metric strong {{
+              display: block;
+              margin-top: 12px;
+              font-size: 28px;
+            }}
+            section {{
+              padding: 36px 0 0;
+            }}
+            h2 {{
+              margin: 0 0 16px;
+              font-size: 22px;
+            }}
+            .skill-list {{
+              display: grid;
+              gap: 10px;
+              padding: 0;
+              margin: 0;
+              list-style: none;
+            }}
+            .skill-list li {{
+              display: flex;
+              justify-content: space-between;
+              gap: 16px;
+              padding: 12px 14px;
+              border: 1px solid var(--line);
+              background: white;
+            }}
+            .bars {{
+              display: grid;
+              gap: 12px;
+              margin-top: 18px;
+            }}
+            .bar span {{
+              display: block;
+              margin-bottom: 6px;
+              color: var(--muted);
+              font-size: 13px;
+            }}
+            .track {{
+              height: 14px;
+              border: 1px solid var(--line);
+              background: white;
+            }}
+            .fill {{
+              height: 100%;
+              background: var(--accent);
+            }}
+            .fill.alt {{
+              background: var(--accent-2);
+            }}
+            @media (max-width: 780px) {{
+              main {{ padding: 32px 0; }}
+              .hero {{ grid-template-columns: 1fr; min-height: auto; }}
+              .metric-grid {{ grid-template-columns: 1fr; }}
+            }}
+          </style>
+        </head>
+        <body>
+          <main>
+            <section class="hero">
+              <div>
+                <h1>German Job Market Intelligence</h1>
+                <p class="lede">
+                  A live FastAPI portfolio demo focused on Germany's tech hiring market:
+                  skill demand, role forecasts, salary signals, and grounded explanations.
+                </p>
+                <div class="actions">
+                  <a class="button" href="/docs">Open API Docs</a>
+                  <a class="button secondary" href="/stats/jobs">View Job Stats</a>
+                  <a class="button secondary" href="/trends/skills">Skill Trends JSON</a>
+                </div>
+              </div>
+              <aside class="snapshot" aria-label="Market snapshot">
+                <div class="metric-grid">
+                  <div class="metric"><span>Market</span><strong>{settings.market_region}</strong></div>
+                  <div class="metric"><span>Jobs loaded</span><strong>{stats.get("total_jobs", 0)}</strong></div>
+                  <div class="metric"><span>Locations</span><strong>{stats.get("locations", 0)}</strong></div>
+                  <div class="metric"><span>Median salary</span><strong>{median_salary:,} {settings.default_currency}</strong></div>
+                </div>
+                <section>
+                  <h2>Top Skills</h2>
+                  <ul class="skill-list">{top_skill_rows}</ul>
+                </section>
+                <section>
+                  <h2>Demo Focus</h2>
+                  <div class="bars">
+                    <div class="bar"><span>Berlin and Munich tech roles</span><div class="track"><div class="fill" style="width: 86%"></div></div></div>
+                    <div class="bar"><span>Cloud, data, and AI demand</span><div class="track"><div class="fill alt" style="width: 78%"></div></div></div>
+                  </div>
+                </section>
+              </aside>
+            </section>
+          </main>
+        </body>
+        </html>
+        """
+    )
 
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    db_status = "connected" if _db else "disconnected"
+    db_status = "disconnected"
+    if _db:
+        try:
+            with _db.get_session() as session:
+                session.execute(text("SELECT 1"))
+            db_status = "connected"
+        except Exception as exc:
+            logger.warning(f"Database health check failed: {exc}")
+            db_status = "unhealthy"
     return {
-        "status": "healthy",
+        "status": "healthy" if db_status == "connected" else "degraded",
         "database": db_status,
         "timestamp": datetime.now().isoformat()
     }
@@ -260,7 +469,7 @@ async def analyze_skill_demand(
 
 @app.get("/trends/skills")
 async def get_skill_trends(
-    period: str = Query("30d", regex="^[0-9]+d$"),
+    period: str = Query("30d", pattern="^[0-9]+d$"),
     limit: int = Query(10, ge=1, le=100)
 ):
     """Get trending skills for a given period.
