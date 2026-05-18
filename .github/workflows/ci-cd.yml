@@ -133,7 +133,7 @@ jobs:
       contents: read
       packages: read
     env:
-      APP_DIR: ${{ secrets.EC2_APP_DIR || '~/job-market-intelligence-platform' }}
+      APP_DIR: /home/ubuntu/job-market-intelligence-platform
       APP_IMAGE: ghcr.io/${{ github.repository }}:main
       EC2_HOST: ${{ secrets.EC2_HOST }}
       EC2_PORT: ${{ secrets.EC2_PORT || '22' }}
