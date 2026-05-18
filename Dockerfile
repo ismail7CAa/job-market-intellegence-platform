@@ -10,9 +10,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --user --no-cache-dir -r requirements.txt
+# Copy runtime requirements and install Python dependencies
+COPY requirements-runtime.txt .
+RUN pip install --user --no-cache-dir -r requirements-runtime.txt
 
 # Stage 2: Runtime
 FROM python:3.11-slim
