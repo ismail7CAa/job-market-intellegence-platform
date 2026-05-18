@@ -135,26 +135,32 @@ jobs:
     env:
       APP_DIR: ${{ secrets.EC2_APP_DIR || '~/job-market-intelligence-platform' }}
       APP_IMAGE: ghcr.io/${{ github.repository }}:main
+      EC2_HOST: ${{ secrets.EC2_HOST }}
+      EC2_PORT: ${{ secrets.EC2_PORT || '22' }}
+      EC2_USER: ${{ secrets.EC2_USER }}
 
     steps:
       - uses: actions/checkout@v3
 
       - name: Prepare SSH key
         run: |
+          test -n "$EC2_HOST" || { echo "EC2_HOST secret is not set"; exit 1; }
+          test -n "$EC2_USER" || { echo "EC2_USER secret is not set"; exit 1; }
+          test -n "${{ secrets.EC2_SSH_KEY }}" || { echo "EC2_SSH_KEY secret is not set"; exit 1; }
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/jmip_deploy_key
           chmod 600 ~/.ssh/jmip_deploy_key
-          ssh-keyscan -p "${{ secrets.EC2_PORT || 22 }}" "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -T 30 -p "$EC2_PORT" "$EC2_HOST" >> ~/.ssh/known_hosts
 
       - name: Copy free-tier compose file
         run: |
-          ssh -i ~/.ssh/jmip_deploy_key -p "${{ secrets.EC2_PORT || 22 }}" "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" "mkdir -p ${APP_DIR}/database"
-          scp -i ~/.ssh/jmip_deploy_key -P "${{ secrets.EC2_PORT || 22 }}" docker-compose.free-tier.yml "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${APP_DIR}/docker-compose.free-tier.yml"
-          scp -i ~/.ssh/jmip_deploy_key -P "${{ secrets.EC2_PORT || 22 }}" database/init.sql "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${APP_DIR}/database/init.sql"
+          ssh -i ~/.ssh/jmip_deploy_key -p "$EC2_PORT" "$EC2_USER@$EC2_HOST" "mkdir -p ${APP_DIR}/database"
+          scp -i ~/.ssh/jmip_deploy_key -P "$EC2_PORT" docker-compose.free-tier.yml "$EC2_USER@$EC2_HOST:${APP_DIR}/docker-compose.free-tier.yml"
+          scp -i ~/.ssh/jmip_deploy_key -P "$EC2_PORT" database/init.sql "$EC2_USER@$EC2_HOST:${APP_DIR}/database/init.sql"
 
       - name: Deploy on EC2
         run: |
-          ssh -i ~/.ssh/jmip_deploy_key -p "${{ secrets.EC2_PORT || 22 }}" "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" <<EOF
+          ssh -i ~/.ssh/jmip_deploy_key -p "$EC2_PORT" "$EC2_USER@$EC2_HOST" <<EOF
           set -e
           cd ${APP_DIR}
 
