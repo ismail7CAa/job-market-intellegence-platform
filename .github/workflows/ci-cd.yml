@@ -134,7 +134,7 @@ jobs:
       packages: read
     env:
       APP_DIR: ${{ secrets.EC2_APP_DIR || '~/job-market-intelligence-platform' }}
-      APP_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main
+      APP_IMAGE: ghcr.io/${{ github.repository }}:main
 
     steps:
       - uses: actions/checkout@v3
