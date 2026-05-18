@@ -1,6 +1,8 @@
 """FastAPI application for Job Market Intelligence Platform."""
 
+import json
 from datetime import datetime
+from html import escape
 from pathlib import Path
 
 import pandas as pd
@@ -164,23 +166,136 @@ def _get_role_prediction_payload(quarters_ahead: int) -> dict:
 
 @app.get("/")
 async def root():
-    """Portfolio landing page for the live German market demo."""
+    """Portfolio dashboard for the live German market demo."""
     _ensure_pipeline_jobs_loaded()
     stats = pipeline.get_statistics()
     try:
         analysis = _ensure_skill_analysis_loaded()
-        top_skills = analysis.get("top_skills", [])[:5]
+        top_skills = analysis.get("top_skills", [])[:8]
     except Exception:
+        analysis = {}
         top_skills = []
+
+    try:
+        role_payload = _get_role_prediction_payload(quarters_ahead=1)
+        predicted_roles = role_payload.get("predicted_roles", [])[:5]
+    except Exception as exc:
+        logger.warning(f"Role forecast unavailable on dashboard: {exc}")
+        predicted_roles = []
+
+    jobs = _serialize_jobs(pipeline.jobs)
+    anomalies = salary_detector.detect_anomalies(jobs)[:4] if jobs else []
+    remote_jobs = sum(
+        1
+        for job in jobs
+        if str(job.get("remote_status", "")).lower() == "remote"
+    )
+    hybrid_jobs = sum(
+        1
+        for job in jobs
+        if str(job.get("remote_status", "")).lower() == "hybrid"
+    )
+    onsite_jobs = sum(
+        1
+        for job in jobs
+        if str(job.get("remote_status", "")).lower() == "onsite"
+    )
 
     salary_stats = stats.get("salary_stats", {})
     median_salary = int(salary_stats.get("median", 0)) if salary_stats else 0
-    top_skill_rows = "".join(
-        f"<li><span>{skill.get('skill', 'Unknown')}</span><strong>{skill.get('demand', 0)}</strong></li>"
-        for skill in top_skills
+    max_skill_demand = max(
+        [skill.get("demand", 0) for skill in top_skills] or [1]
     )
-    if not top_skill_rows:
-        top_skill_rows = "<li><span>No skill data loaded</span><strong>0</strong></li>"
+    top_skill_rows = "".join(
+        f"""
+        <div class="skill-row">
+          <div>
+            <strong>{escape(str(skill.get("skill", "Unknown")))}</strong>
+            <span>{skill.get("demand_percentage", 0):.1f}% of skill mentions</span>
+          </div>
+          <div class="skill-meter" aria-label="Demand for {escape(str(skill.get("skill", "Unknown")))}">
+            <i style="width: {int((skill.get("demand", 0) / max_skill_demand) * 100)}%"></i>
+          </div>
+          <b>{skill.get("demand", 0)}</b>
+        </div>
+        """
+        for skill in top_skills
+    ) or """
+        <div class="skill-row">
+          <div><strong>No skill data loaded</strong><span>Run ingestion or load demo data</span></div>
+          <div class="skill-meter"><i style="width: 0%"></i></div>
+          <b>0</b>
+        </div>
+    """
+
+    max_role_index = max(
+        [role.get("projected_demand_index", 0) for role in predicted_roles] or [1]
+    )
+    role_rows = "".join(
+        f"""
+        <div class="role-row">
+          <div>
+            <strong>{escape(str(role.get("role", "Unknown role")))}</strong>
+            <span>Confidence {role.get("confidence_score", 0):.2f}</span>
+          </div>
+          <div class="role-score">
+            <i style="width: {int((role.get("projected_demand_index", 0) / max_role_index) * 100)}%"></i>
+          </div>
+          <b>{role.get("projected_demand_index", 0):.1f}</b>
+        </div>
+        """
+        for role in predicted_roles
+    ) or """
+        <div class="role-row">
+          <div><strong>Forecast unavailable</strong><span>Model output not loaded</span></div>
+          <div class="role-score"><i style="width: 0%"></i></div>
+          <b>0.0</b>
+        </div>
+    """
+
+    anomaly_rows = "".join(
+        f"""
+        <tr>
+          <td>{escape(str(item.get("title", "Unknown")))}</td>
+          <td>{escape(str(item.get("location", "Unknown")))}</td>
+          <td>{item.get("salary_avg", 0):,.0f} {settings.default_currency}</td>
+          <td>{escape(", ".join(item.get("reasons", [])))}</td>
+        </tr>
+        """
+        for item in anomalies
+    ) or """
+        <tr>
+          <td colspan="4">No salary anomalies detected in the loaded dataset.</td>
+        </tr>
+    """
+
+    city_counts = {}
+    for job in jobs:
+        location = str(job.get("location", "Unknown")).replace(", Germany", "")
+        city_counts[location] = city_counts.get(location, 0) + 1
+    city_rows = "".join(
+        f"""
+        <span class="city-pill">
+          {escape(city)}
+          <b>{count}</b>
+        </span>
+        """
+        for city, count in sorted(city_counts.items(), key=lambda item: (-item[1], item[0]))
+    )
+
+    dashboard_payload = json.dumps(
+        {
+            "totalJobs": stats.get("total_jobs", 0),
+            "locations": stats.get("locations", 0),
+            "companies": stats.get("companies", 0),
+            "uniqueSkills": stats.get("unique_skills", 0),
+            "medianSalary": median_salary,
+            "currency": settings.default_currency,
+            "remoteJobs": remote_jobs,
+            "hybridJobs": hybrid_jobs,
+            "onsiteJobs": onsite_jobs,
+        }
+    )
 
     return HTMLResponse(
         f"""
@@ -192,192 +307,536 @@ async def root():
           <title>German Job Market Intelligence</title>
           <style>
             :root {{
-              color-scheme: light;
-              --ink: #17202a;
-              --muted: #5d6875;
-              --line: #d9e0e7;
-              --panel: #f6f8fa;
-              --accent: #0f766e;
-              --accent-2: #b45309;
-              --surface: #ffffff;
+              color-scheme: dark;
+              --bg: #0b0f14;
+              --surface: #111821;
+              --surface-2: #17212c;
+              --ink: #edf4f8;
+              --muted: #9eb0bf;
+              --line: #263544;
+              --green: #3ddc97;
+              --blue: #66a6ff;
+              --amber: #f2b84b;
+              --red: #ff6b6b;
+              --white: #ffffff;
             }}
             * {{ box-sizing: border-box; }}
             body {{
               margin: 0;
               font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-              background: var(--surface);
+              background:
+                radial-gradient(circle at top left, rgba(61, 220, 151, 0.12), transparent 28rem),
+                linear-gradient(180deg, #0b0f14 0%, #0e141b 48%, #0b0f14 100%);
               color: var(--ink);
             }}
+            a {{ color: inherit; text-decoration: none; }}
             main {{
-              width: min(1120px, calc(100% - 32px));
+              width: min(1280px, calc(100% - 28px));
               margin: 0 auto;
-              padding: 48px 0;
+              padding: 22px 0 42px;
             }}
-            .hero {{
-              display: grid;
-              grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
-              gap: 32px;
+            .topbar {{
+              display: flex;
+              justify-content: space-between;
               align-items: center;
-              min-height: 62vh;
+              gap: 18px;
+              min-height: 60px;
+              border-bottom: 1px solid var(--line);
+            }}
+            .brand {{
+              display: flex;
+              align-items: center;
+              gap: 12px;
+              font-weight: 800;
+            }}
+            .mark {{
+              display: grid;
+              place-items: center;
+              width: 34px;
+              height: 34px;
+              border: 1px solid rgba(61, 220, 151, 0.55);
+              background: rgba(61, 220, 151, 0.12);
+              color: var(--green);
+              font-size: 13px;
+            }}
+            .nav {{
+              display: flex;
+              align-items: center;
+              gap: 10px;
+              color: var(--muted);
+              font-size: 14px;
+            }}
+            .nav a {{
+              padding: 8px 10px;
+              border: 1px solid transparent;
+            }}
+            .nav a:hover {{
+              border-color: var(--line);
+              color: var(--ink);
+            }}
+            .status-dot {{
+              width: 8px;
+              height: 8px;
+              background: var(--green);
+              border-radius: 50%;
+              box-shadow: 0 0 0 4px rgba(61, 220, 151, 0.12);
+            }}
+            .hero-grid {{
+              display: grid;
+              grid-template-columns: minmax(0, 1fr) 420px;
+              gap: 18px;
+              padding: 26px 0 18px;
+              align-items: stretch;
+            }}
+            .hero-panel {{
+              min-height: 410px;
+              display: flex;
+              flex-direction: column;
+              justify-content: space-between;
+              padding: 28px;
+              border: 1px solid var(--line);
+              background:
+                linear-gradient(135deg, rgba(102, 166, 255, 0.12), transparent 42%),
+                linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015));
             }}
             h1 {{
               margin: 0;
-              max-width: 760px;
-              font-size: clamp(40px, 7vw, 76px);
-              line-height: 0.96;
+              max-width: 780px;
+              font-size: clamp(44px, 7vw, 88px);
+              line-height: 0.92;
               letter-spacing: 0;
             }}
+            .eyebrow {{
+              display: inline-flex;
+              align-items: center;
+              gap: 10px;
+              width: fit-content;
+              margin-bottom: 18px;
+              padding: 7px 10px;
+              border: 1px solid rgba(61, 220, 151, 0.35);
+              background: rgba(61, 220, 151, 0.08);
+              color: var(--green);
+              font-size: 13px;
+              font-weight: 700;
+            }}
             .lede {{
-              max-width: 660px;
+              max-width: 720px;
               margin: 22px 0 0;
               color: var(--muted);
-              font-size: 19px;
+              font-size: 18px;
               line-height: 1.6;
             }}
             .actions {{
               display: flex;
               flex-wrap: wrap;
               gap: 12px;
-              margin-top: 28px;
-            }}
-            a {{
-              color: inherit;
-              text-decoration: none;
+              margin-top: 30px;
             }}
             .button {{
               display: inline-flex;
               align-items: center;
-              min-height: 44px;
-              padding: 0 16px;
+              justify-content: center;
+              min-height: 42px;
+              padding: 0 14px;
               border: 1px solid var(--line);
-              background: var(--ink);
-              color: white;
+              background: var(--green);
+              color: #06110c;
               font-weight: 700;
+              font-size: 14px;
             }}
             .button.secondary {{
-              background: white;
+              background: transparent;
               color: var(--ink);
             }}
-            .snapshot {{
-              border: 1px solid var(--line);
-              background: var(--panel);
-              padding: 22px;
+            .button.ghost {{
+              background: var(--surface-2);
+              color: var(--ink);
             }}
-            .metric-grid {{
+            .system-panel, .panel {{
+              border: 1px solid var(--line);
+              background: rgba(17, 24, 33, 0.86);
+            }}
+            .system-panel {{
+              padding: 20px;
               display: grid;
-              grid-template-columns: repeat(2, minmax(0, 1fr));
+              gap: 14px;
+            }}
+            .terminal {{
+              min-height: 172px;
+              padding: 16px;
+              border: 1px solid var(--line);
+              background: #070a0e;
+              color: #c9f7df;
+              font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+              font-size: 13px;
+              line-height: 1.65;
+            }}
+            .terminal span {{ color: var(--muted); }}
+            .mini-chart {{
+              display: grid;
+              grid-template-columns: repeat(14, 1fr);
+              align-items: end;
+              gap: 5px;
+              height: 150px;
+              padding: 16px;
+              border: 1px solid var(--line);
+              background: var(--surface);
+            }}
+            .mini-chart i {{
+              display: block;
+              background: linear-gradient(180deg, var(--blue), var(--green));
+              min-height: 12px;
+            }}
+            .metric-strip {{
+              display: grid;
+              grid-template-columns: repeat(4, minmax(0, 1fr));
               gap: 12px;
+              margin-bottom: 18px;
             }}
             .metric {{
-              min-height: 108px;
+              min-height: 122px;
               padding: 16px;
-              background: white;
               border: 1px solid var(--line);
+              background: var(--surface);
             }}
-            .metric span {{
+            .metric span, .panel-title span, .skill-row span, .role-row span {{
               display: block;
               color: var(--muted);
               font-size: 13px;
             }}
             .metric strong {{
               display: block;
-              margin-top: 12px;
-              font-size: 28px;
+              margin-top: 16px;
+              font-size: 32px;
+              letter-spacing: 0;
             }}
-            section {{
-              padding: 36px 0 0;
+            .metric small {{
+              display: block;
+              margin-top: 8px;
+              color: var(--muted);
             }}
-            h2 {{
-              margin: 0 0 16px;
-              font-size: 22px;
-            }}
-            .skill-list {{
+            .dashboard-grid {{
               display: grid;
-              gap: 10px;
-              padding: 0;
-              margin: 0;
-              list-style: none;
+              grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
+              gap: 12px;
             }}
-            .skill-list li {{
+            .panel {{
+              padding: 18px;
+              min-width: 0;
+            }}
+            .panel-title {{
               display: flex;
               justify-content: space-between;
+              align-items: flex-start;
               gap: 16px;
-              padding: 12px 14px;
-              border: 1px solid var(--line);
-              background: white;
+              margin-bottom: 16px;
             }}
-            .bars {{
+            h2 {{
+              margin: 0;
+              font-size: 20px;
+              letter-spacing: 0;
+            }}
+            .skill-stack, .role-stack {{
               display: grid;
-              gap: 12px;
-              margin-top: 18px;
+              gap: 10px;
             }}
-            .bar span {{
+            .skill-row, .role-row {{
+              display: grid;
+              grid-template-columns: minmax(120px, 1fr) minmax(110px, 0.7fr) 42px;
+              align-items: center;
+              gap: 14px;
+              padding: 12px;
+              border: 1px solid var(--line);
+              background: rgba(255, 255, 255, 0.025);
+            }}
+            .skill-meter, .role-score {{
+              height: 8px;
+              background: #0a0f15;
+              overflow: hidden;
+            }}
+            .skill-meter i, .role-score i {{
               display: block;
-              margin-bottom: 6px;
+              height: 100%;
+              background: var(--green);
+            }}
+            .role-score i {{ background: var(--blue); }}
+            .market-layout {{
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 12px;
+              margin-top: 12px;
+            }}
+            .work-mode {{
+              display: grid;
+              gap: 10px;
+              padding: 14px;
+              border: 1px solid var(--line);
+              background: rgba(255, 255, 255, 0.025);
+            }}
+            .mode-track {{
+              height: 12px;
+              background: #0a0f15;
+              display: flex;
+              overflow: hidden;
+            }}
+            .mode-track i:nth-child(1) {{ background: var(--green); }}
+            .mode-track i:nth-child(2) {{ background: var(--blue); }}
+            .mode-track i:nth-child(3) {{ background: var(--amber); }}
+            .city-cloud {{
+              display: flex;
+              flex-wrap: wrap;
+              gap: 8px;
+            }}
+            .city-pill {{
+              display: inline-flex;
+              align-items: center;
+              gap: 8px;
+              padding: 8px 10px;
+              border: 1px solid var(--line);
+              background: rgba(255, 255, 255, 0.035);
               color: var(--muted);
               font-size: 13px;
             }}
-            .track {{
-              height: 14px;
+            .city-pill b {{ color: var(--ink); }}
+            table {{
+              width: 100%;
+              border-collapse: collapse;
+              font-size: 14px;
+            }}
+            th, td {{
+              padding: 12px 10px;
+              text-align: left;
+              border-bottom: 1px solid var(--line);
+            }}
+            th {{
+              color: var(--muted);
+              font-size: 12px;
+              text-transform: uppercase;
+              font-weight: 700;
+            }}
+            .agent {{
+              margin-top: 12px;
+              display: grid;
+              grid-template-columns: minmax(0, 1fr) 170px;
+              gap: 10px;
+            }}
+            .agent input {{
+              min-height: 44px;
+              padding: 0 12px;
               border: 1px solid var(--line);
-              background: white;
+              background: #0a0f15;
+              color: var(--ink);
+              font: inherit;
             }}
-            .fill {{
-              height: 100%;
-              background: var(--accent);
+            .agent-output {{
+              margin-top: 12px;
+              min-height: 84px;
+              padding: 14px;
+              border: 1px solid var(--line);
+              background: #0a0f15;
+              color: var(--muted);
+              line-height: 1.55;
             }}
-            .fill.alt {{
-              background: var(--accent-2);
+            .footer-band {{
+              margin-top: 18px;
+              padding: 18px;
+              border: 1px solid var(--line);
+              color: var(--muted);
+              background: rgba(255, 255, 255, 0.025);
+              display: flex;
+              justify-content: space-between;
+              gap: 18px;
+              flex-wrap: wrap;
             }}
-            @media (max-width: 780px) {{
-              main {{ padding: 32px 0; }}
-              .hero {{ grid-template-columns: 1fr; min-height: auto; }}
-              .metric-grid {{ grid-template-columns: 1fr; }}
+            @media (max-width: 980px) {{
+              .hero-grid, .dashboard-grid, .market-layout {{
+                grid-template-columns: 1fr;
+              }}
+              .metric-strip {{
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+              }}
+            }}
+            @media (max-width: 640px) {{
+              main {{ width: min(100% - 20px, 1280px); padding-top: 12px; }}
+              .topbar {{ align-items: flex-start; flex-direction: column; padding-bottom: 14px; }}
+              .nav {{ flex-wrap: wrap; }}
+              .hero-panel {{ padding: 18px; min-height: 360px; }}
+              .metric-strip {{ grid-template-columns: 1fr; }}
+              .skill-row, .role-row {{ grid-template-columns: 1fr; }}
+              .agent {{ grid-template-columns: 1fr; }}
             }}
           </style>
         </head>
         <body>
           <main>
-            <section class="hero">
-              <div>
-                <h1>German Job Market Intelligence</h1>
-                <p class="lede">
-                  A live FastAPI portfolio demo focused on Germany's tech hiring market:
-                  skill demand, role forecasts, salary signals, and grounded explanations.
-                </p>
-                <div class="actions">
-                  <a class="button" href="/docs">Open API Docs</a>
-                  <a class="button secondary" href="/stats/jobs">View Job Stats</a>
-                  <a class="button secondary" href="/trends/skills">Skill Trends JSON</a>
+            <header class="topbar">
+              <a class="brand" href="/">
+                <span class="mark">DE</span>
+                <span>German Job Market Intelligence</span>
+              </a>
+              <nav class="nav" aria-label="Primary">
+                <span class="status-dot" aria-hidden="true"></span>
+                <span>Live EC2 demo</span>
+                <a href="/docs">API Docs</a>
+                <a href="/health">Health</a>
+                <a href="/stats/jobs">JSON</a>
+              </nav>
+            </header>
+
+            <section class="hero-grid">
+              <div class="hero-panel">
+                <div>
+                  <div class="eyebrow">AWS EC2 · FastAPI · Postgres · MLflow-ready</div>
+                  <h1>German tech labor signals, modeled and explained.</h1>
+                  <p class="lede">
+                    A portfolio-grade data and ML platform for skill demand, salary anomalies,
+                    role forecasts, and grounded market explanations across German tech roles.
+                  </p>
+                  <div class="actions">
+                    <a class="button" href="/docs">Explore API</a>
+                    <a class="button secondary" href="/agent/explain?question=Why%20is%20this%20salary%20anomalous%3F&job_id=prod_005">Agent Evidence</a>
+                    <a class="button ghost" href="/predict/roles">Role Forecast</a>
+                  </div>
+                </div>
+                <div class="footer-band">
+                  <span>Dataset: reproducible German demo market</span>
+                  <span>Currency: {settings.default_currency}</span>
+                  <span>Region: {settings.market_region}</span>
                 </div>
               </div>
-              <aside class="snapshot" aria-label="Market snapshot">
-                <div class="metric-grid">
-                  <div class="metric"><span>Market</span><strong>{settings.market_region}</strong></div>
-                  <div class="metric"><span>Jobs loaded</span><strong>{stats.get("total_jobs", 0)}</strong></div>
-                  <div class="metric"><span>Locations</span><strong>{stats.get("locations", 0)}</strong></div>
-                  <div class="metric"><span>Median salary</span><strong>{median_salary:,} {settings.default_currency}</strong></div>
+
+              <aside class="system-panel" aria-label="System telemetry">
+                <div class="terminal">
+                  <span>$ curl /health</span><br>
+                  status: connected<br>
+                  database: postgres<br>
+                  deploy: docker compose on ec2<br>
+                  agent: grounded explanations ready
                 </div>
-                <section>
-                  <h2>Top Skills</h2>
-                  <ul class="skill-list">{top_skill_rows}</ul>
-                </section>
-                <section>
-                  <h2>Demo Focus</h2>
-                  <div class="bars">
-                    <div class="bar"><span>Berlin and Munich tech roles</span><div class="track"><div class="fill" style="width: 86%"></div></div></div>
-                    <div class="bar"><span>Cloud, data, and AI demand</span><div class="track"><div class="fill alt" style="width: 78%"></div></div></div>
-                  </div>
-                </section>
+                <div class="mini-chart" aria-label="Demand signal chart">
+                  <i style="height: 36%"></i><i style="height: 48%"></i><i style="height: 42%"></i>
+                  <i style="height: 58%"></i><i style="height: 62%"></i><i style="height: 54%"></i>
+                  <i style="height: 74%"></i><i style="height: 66%"></i><i style="height: 80%"></i>
+                  <i style="height: 72%"></i><i style="height: 88%"></i><i style="height: 84%"></i>
+                  <i style="height: 92%"></i><i style="height: 96%"></i>
+                </div>
               </aside>
             </section>
+
+            <section class="metric-strip" aria-label="Market metrics">
+              <div class="metric"><span>Jobs loaded</span><strong>{stats.get("total_jobs", 0)}</strong><small>validated postings</small></div>
+              <div class="metric"><span>Median salary</span><strong>{median_salary:,}</strong><small>{settings.default_currency} annual midpoint</small></div>
+              <div class="metric"><span>Locations</span><strong>{stats.get("locations", 0)}</strong><small>German hiring markets</small></div>
+              <div class="metric"><span>Skills tracked</span><strong>{stats.get("unique_skills", 0)}</strong><small>normalized demand signals</small></div>
+            </section>
+
+            <section class="dashboard-grid">
+              <article class="panel">
+                <div class="panel-title">
+                  <div>
+                    <h2>Skill Demand</h2>
+                    <span>Ranked by occurrence across loaded German tech roles</span>
+                  </div>
+                  <a class="button secondary" href="/trends/skills">Open JSON</a>
+                </div>
+                <div class="skill-stack">{top_skill_rows}</div>
+              </article>
+
+              <article class="panel">
+                <div class="panel-title">
+                  <div>
+                    <h2>Role Forecast</h2>
+                    <span>Model-backed projected demand index</span>
+                  </div>
+                  <a class="button secondary" href="/predict/roles">Endpoint</a>
+                </div>
+                <div class="role-stack">{role_rows}</div>
+              </article>
+            </section>
+
+            <section class="dashboard-grid" style="margin-top: 12px;">
+              <article class="panel">
+                <div class="panel-title">
+                  <div>
+                    <h2>Salary Anomaly Watch</h2>
+                    <span>Outliers detected from salary midpoint distributions</span>
+                  </div>
+                  <a class="button secondary" href="/salary/anomalies">Inspect</a>
+                </div>
+                <table>
+                  <thead>
+                    <tr><th>Role</th><th>Location</th><th>Salary Avg</th><th>Reason</th></tr>
+                  </thead>
+                  <tbody>{anomaly_rows}</tbody>
+                </table>
+              </article>
+
+              <article class="panel">
+                <div class="panel-title">
+                  <div>
+                    <h2>Market Coverage</h2>
+                    <span>Locations and work-mode distribution in the demo dataset</span>
+                  </div>
+                </div>
+                <div class="market-layout">
+                  <div class="work-mode">
+                    <strong>Work modes</strong>
+                    <div class="mode-track" aria-label="Work mode distribution">
+                      <i style="width: {remote_jobs * 10}%"></i>
+                      <i style="width: {hybrid_jobs * 10}%"></i>
+                      <i style="width: {onsite_jobs * 10}%"></i>
+                    </div>
+                    <span>Remote {remote_jobs} · Hybrid {hybrid_jobs} · Onsite {onsite_jobs}</span>
+                  </div>
+                  <div class="city-cloud">{city_rows}</div>
+                </div>
+              </article>
+            </section>
+
+            <section class="panel" style="margin-top: 12px;">
+              <div class="panel-title">
+                <div>
+                  <h2>Ask the Market Agent</h2>
+                  <span>Grounded answers from skill analytics, salary checks, role forecasts, and loaded job evidence</span>
+                </div>
+              </div>
+              <form class="agent" id="agent-form">
+                <input id="agent-question" name="question" value="What are the top 3 skills?" aria-label="Market question">
+                <button class="button" type="submit">Ask Agent</button>
+              </form>
+              <div class="agent-output" id="agent-output">
+                Ask a question about the German market dataset. The agent will answer from platform evidence.
+              </div>
+            </section>
+
+            <footer class="footer-band">
+              <span>Built with FastAPI, Pandera, scikit-learn, SQLAlchemy, Postgres, Docker, GHCR, and AWS EC2.</span>
+              <span>Last refreshed {datetime.now().strftime("%Y-%m-%d %H:%M")}</span>
+            </footer>
           </main>
+
+          <script>
+            window.dashboard = {dashboard_payload};
+            const form = document.getElementById('agent-form');
+            const output = document.getElementById('agent-output');
+            form.addEventListener('submit', async (event) => {{
+              event.preventDefault();
+              const question = document.getElementById('agent-question').value.trim();
+              if (!question) return;
+              output.textContent = 'Thinking with platform evidence...';
+              try {{
+                const response = await fetch('/query?question=' + encodeURIComponent(question), {{ method: 'POST' }});
+                const payload = await response.json();
+                output.textContent = payload.answer || 'No answer returned.';
+              }} catch (error) {{
+                output.textContent = 'The agent could not answer right now. Check API health and try again.';
+              }}
+            }});
+          </script>
         </body>
         </html>
         """
     )
-
-
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
