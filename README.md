@@ -6,9 +6,10 @@ The project is built as a portfolio-grade slice of a real analytics system: type
 
 ## Live Demo
 
-- Portfolio demo page: [http://localhost:8000](http://localhost:8000) after running `make serve`
-- API docs: [http://localhost:8000/docs](http://localhost:8000/docs) after running `make serve`
-- Health check: [http://localhost:8000/health](http://localhost:8000/health) after running `make serve`
+- Live portfolio dashboard: [http://3.121.22.50:8000](http://3.121.22.50:8000)
+- Live API docs: [http://3.121.22.50:8000/docs](http://3.121.22.50:8000/docs)
+- Live health check: [http://3.121.22.50:8000/health](http://3.121.22.50:8000/health)
+- Local dashboard: [http://localhost:8000](http://localhost:8000) after running `make serve`
 
 Public cloud deployment now defaults to a one-host AWS EC2 path using Docker Compose, GHCR images, and a local Postgres container. Terraform/ECS, RDS, load balancers, NAT gateways, and Kubernetes are kept as optional production scaffolding because they can create AWS charges. See [INFRASTRUCTURE.md](INFRASTRUCTURE.md) for the deployment path.
 
@@ -44,6 +45,7 @@ flowchart LR
 
     subgraph Serving
         API[FastAPI]
+        WEB[FastAPI-served dashboard]
         NLP[Natural-language query layer]
         AGENT[Grounded explanation agent]
     end
@@ -61,6 +63,7 @@ flowchart LR
     SKILL --> API
     SALARY --> API
     ROLE --> API
+    API --> WEB
     SKILL --> AGENT
     SALARY --> AGENT
     ROLE --> AGENT
@@ -78,6 +81,7 @@ flowchart LR
 6. The role predictor builds text, categorical, and numeric features, trains a scikit-learn model, and logs metrics/artifacts/model versions to MLflow.
 7. The explanation agent retrieves the relevant job posting, analysis output, and salary context before producing a grounded narrative.
 8. FastAPI serves pipeline status, job statistics, skill reports, role forecasts, salary anomaly results, agent explanations, CSV exports, and lightweight natural-language query responses.
+9. The root route renders a product-style dashboard that surfaces metrics, forecasts, anomalies, market coverage, and a visible market-agent query box.
 
 ## Key Design Decisions
 
@@ -87,6 +91,8 @@ flowchart LR
 - **The public version uses German demo data intentionally.** This keeps the deployment reproducible and avoids pretending that unapproved live scraping is production-ready. See [docs/decisions/004-why-demo-data-for-public-portfolio.md](docs/decisions/004-why-demo-data-for-public-portfolio.md).
 - **GitHub Actions and GHCR provide the first CI/CD path.** The EC2 host pulls a built image instead of building from source on the instance. See [docs/decisions/005-why-github-actions-ghcr.md](docs/decisions/005-why-github-actions-ghcr.md).
 - **The demo is focused on Germany.** German roles, cities, and EUR salary ranges make the product story more specific and credible. See [docs/decisions/006-why-german-market-focus.md](docs/decisions/006-why-german-market-focus.md).
+- **The frontend is served by FastAPI for v1.** This keeps the deployment as one app container while still giving reviewers a polished dashboard and visible agent surface. See [docs/decisions/007-why-fastapi-served-dashboard.md](docs/decisions/007-why-fastapi-served-dashboard.md).
+- **The Docker image uses runtime-only dependencies.** `requirements-runtime.txt` avoids shipping heavy research/orchestration packages into the public API image. See [docs/decisions/008-why-slim-docker-runtime-image.md](docs/decisions/008-why-slim-docker-runtime-image.md).
 - **Data quality is enforced at dataframe boundaries.** Pydantic validates individual job objects; Pandera validates whole batches before they leave the pipeline. This caught a real development bug where sparse Kaggle salary fields could become fake `0` salaries.
 - **Configuration is typed and environment-driven.** `config/settings.py` uses a Pydantic settings model loaded from environment variables and `.env`. Secrets, paths, Kafka settings, German market defaults, MLflow settings, and model hyperparameters are not buried in scripts.
 - **The local path is intentionally reproducible.** `make ingest`, `make train`, `make serve`, and `make test` provide stable developer workflows instead of relying on README command sequencing.
@@ -119,6 +125,7 @@ Runtime configuration lives in `.env`; use [.env.example](.env.example) as the t
 
 The FastAPI service exposes:
 
+- `/` 
 - `/health`
 - `/data/fetch`
 - `/analyze/skills`
@@ -145,16 +152,19 @@ When live-ingested jobs are not loaded yet, the API can fall back to the local s
 - `src/nlp/`: lightweight natural-language query handling and grounded agent explanations
 - `src/database/`: SQLAlchemy models and repository helpers
 - `tests/`: pipeline, schema, feature engineering, model regression, analytics, database, and API tests
+- `requirements-runtime.txt`: lean dependency set for the deployed API/dashboard container
 - `airflow/`, `dbt/`, `feast/`: orchestration, transformation, and feature-store scaffolding
 - `docker-compose.free-tier.yml`, `terraform/`, `k8s/`, `Dockerfile`, `docker-compose.yml`: free-tier deployment and infrastructure scaffolding
 
 ## Current Status
 
-Core local workflows for ingestion, validation, analytics, API serving, testing, and MLflow-backed experimentation are in place. AWS, Docker, Kubernetes, Terraform, Airflow, dbt, and Feast are included as staged infrastructure components rather than claimed production deployments.
+The platform is publicly deployed on AWS EC2 at [http://3.121.22.50:8000](http://3.121.22.50:8000). Core local workflows for ingestion, validation, analytics, API serving, testing, Docker deployment, and MLflow-backed experimentation are in place. Kubernetes, Terraform, Airflow, dbt, Feast, and BigQuery remain staged infrastructure components for future production hardening rather than claimed live production systems.
 
 ## What I Would Improve With More Time
 
-- Deploy the API publicly on the one-EC2 AWS path and replace the local demo links with the live demo URL.
+- Add a custom domain and HTTPS in front of the EC2 deployment.
+- Split the current FastAPI-served dashboard into a dedicated React/Vite frontend if the UI grows beyond the v1 dashboard.
+- Add a hosted LLM narration layer to the existing grounded market agent while preserving evidence/tool traces.
 - Add a scheduled orchestration path that runs ingestion, validation, dbt transformations, feature generation, and retraining as separate observable jobs.
 - Replace mock LinkedIn data with a production-safe provider or licensed job-posting dataset.
 - Add data drift checks and model monitoring around salary distributions, skill vocabulary shifts, and role-classification confidence.
@@ -172,3 +182,5 @@ Core local workflows for ingestion, validation, analytics, API serving, testing,
 - [docs/decisions/004-why-demo-data-for-public-portfolio.md](docs/decisions/004-why-demo-data-for-public-portfolio.md): demo data decision
 - [docs/decisions/005-why-github-actions-ghcr.md](docs/decisions/005-why-github-actions-ghcr.md): CI/CD and image registry decision
 - [docs/decisions/006-why-german-market-focus.md](docs/decisions/006-why-german-market-focus.md): German market focus decision
+- [docs/decisions/007-why-fastapi-served-dashboard.md](docs/decisions/007-why-fastapi-served-dashboard.md): dashboard/frontend decision
+- [docs/decisions/008-why-slim-docker-runtime-image.md](docs/decisions/008-why-slim-docker-runtime-image.md): runtime image decision

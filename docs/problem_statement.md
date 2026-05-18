@@ -175,6 +175,151 @@ Outcome:
 - the system can demonstrate analytics, ML, and API behavior without depending on external credentials
 - future live-data work remains possible once a compliant data source is chosen
 
+### 11. CI Dependencies Drifted from the Application
+
+The GitHub Actions test job installed a short manual dependency list. As the application matured, tests started importing packages that were not in that list, such as `pandera`, `pydantic-settings`, `fastapi`, `loguru`, and `scikit-learn`.
+
+Solved by:
+
+- updating `.github/workflows/ci-cd.yml` with the lightweight dependencies needed by the test/runtime surface
+- keeping the full research/orchestration dependencies out of the CI test bootstrap
+- rerunning the full local suite before pushing fixes
+
+Outcome:
+
+- test collection works in GitHub Actions
+- CI now catches behavior regressions rather than failing on missing imports
+- the dependency boundary between test/runtime and future heavy tooling is clearer
+
+Lesson learned:
+
+- a curated CI dependency list is faster than installing everything, but it must be maintained as the application imports evolve
+
+### 12. Pandera Validation Exposed Serialization Differences
+
+CI used a stricter/newer validation path than the earlier local environment. Pydantic JSON serialization converted `posted_date` values into strings, and nullable `url` values stayed as object dtype. Pandera rejected those columns during pipeline tests.
+
+Solved by:
+
+- changing job serialization at dataframe boundaries to preserve Python datetime objects
+- making `posted_date` a `pa.DateTime` column with coercion
+- allowing nullable URL values to coerce consistently
+
+Outcome:
+
+- the pipeline schema now behaves consistently in CI and local execution
+- datetime validation is more explicit
+- pipeline boundary contracts are stronger
+
+Lesson learned:
+
+- validation libraries can reveal hidden type assumptions; schema contracts should normalize boundary types intentionally
+
+### 13. The Docker Image Was Too Heavy for GitHub Actions
+
+The first Docker build used the full `requirements.txt`, which includes heavy future-facing tools such as Airflow, dbt, Feast, Torch, Transformers, Prophet, and XGBoost. The GitHub Actions runner ran out of disk space during the build.
+
+Solved by:
+
+- adding `requirements-runtime.txt` for the deployed FastAPI image
+- updating `Dockerfile` to install runtime-only dependencies
+- tightening `.dockerignore` to exclude `.venv`, MLflow artifacts, notebooks, Terraform, local databases, and nested repository copies
+
+Outcome:
+
+- Docker builds are smaller and more reliable
+- the EC2 app image better matches the public serving workload
+- heavy tooling remains available in the repository without bloating the runtime container
+
+Lesson learned:
+
+- portfolio systems can include production/future scaffolding, but runtime containers should only ship what they need
+
+### 14. GitHub Actions Deployment Needed Cloud-Network Debugging
+
+The CI/CD deploy job failed in several stages before it could reliably update EC2:
+
+- `ssh-keyscan` failed before useful diagnostics were available
+- GitHub Actions could not SSH while the EC2 security group allowed only the developer's IP
+- the app directory secret/default expanded incorrectly and created a broken `/database` path
+- Docker rejected a GHCR image reference containing uppercase characters from the GitHub owner name
+
+Solved by:
+
+- using `StrictHostKeyChecking=accept-new` on SSH/SCP commands
+- documenting that GitHub Actions runners need network access to EC2 port `22`
+- replacing the deploy directory expression with `/home/ubuntu/job-market-intelligence-platform`
+- using a lowercase GHCR image path
+
+Outcome:
+
+- CI/CD can copy deployment files and restart the app on EC2
+- the workflow is easier to debug when secrets or connectivity are wrong
+- the deployment path is now reproducible from a push to `main`
+
+Lesson learned:
+
+- a successful SSH login from a laptop does not prove GitHub Actions can reach the server; CI runners are separate network clients
+
+### 15. Runtime Dependencies Were Installed for the Wrong Linux User
+
+The Dockerfile originally installed Python packages with `pip install --user` in the builder stage and copied `/root/.local` into the runtime image. The container then ran as a non-root `appuser`, so Python could not find `uvicorn`.
+
+Solved by:
+
+- installing dependencies into a build prefix
+- copying that prefix into `/usr/local`
+- keeping the container running as a non-root user
+
+Outcome:
+
+- `python -m uvicorn` works inside the runtime container
+- the app can run securely as `appuser`
+- dependency visibility no longer depends on root's home directory
+
+Lesson learned:
+
+- non-root containers need dependencies installed in a location visible to the runtime user
+
+### 16. Database Passwords Broke the Connection URL
+
+The deployed app initially reported the database as disconnected. Logs showed the Postgres host was parsed incorrectly because the password was inserted into `DATABASE_URL` and contained URL-special characters.
+
+Solved by:
+
+- changing the GitHub `EC2_DB_PASSWORD` secret to a URL-safe value
+- resetting the local Postgres Docker volume so it initialized with the new password
+
+Outcome:
+
+- `/health` reports the database as connected
+- the app and Postgres communicate correctly through Docker Compose
+
+Lesson learned:
+
+- secrets placed inside URLs must be URL-safe or URL-encoded; otherwise connection strings can break in non-obvious ways
+
+### 17. The Public URL Needed a Product Surface
+
+After deployment, the root page still looked too much like an API placeholder. For a portfolio project, the first impression should communicate the product and the engineering depth without requiring the reviewer to open Swagger first.
+
+Solved by:
+
+- replacing the simple landing page with a FastAPI-served dashboard
+- surfacing market metrics, skills, role forecasts, salary anomalies, city coverage, and work-mode distribution
+- adding a visible market-agent query box backed by `/query`
+- keeping `/docs` available for technical API inspection
+
+Outcome:
+
+- the live URL now feels like a real product demo
+- the AI agent is visible on the frontend
+- reviewers can see DE, DS, ML engineering, and AI engineering signals from the first screen
+
+Lesson learned:
+
+- a strong backend project still needs a clear product surface for portfolio review
+
 ## Current State
 
 At this stage, the platform now has:
@@ -189,10 +334,13 @@ At this stage, the platform now has:
 - a Germany-focused portfolio demo dataset
 - a one-EC2 Docker Compose deployment path
 - a Postgres schema aligned with the application models
+- a deployed FastAPI dashboard at `http://3.121.22.50:8000`
+- a working GitHub Actions to GHCR to EC2 deployment flow
+- a slim Docker runtime image for the public API/dashboard
 - test coverage validating the updated functionality
 
 ## Why This Matters
 
 These fixes moved the project from a partially scaffolded system to a working local platform with traceable ML experiments, a more believable API layer, and much stronger alignment between the repository structure and the actual user-facing behavior.
 
-The remaining work is now less about fixing broken wiring and more about product depth, deployment hardening, and future-scale improvements.
+The remaining work is now less about fixing broken wiring and more about product depth, deployment hardening, custom domain/HTTPS setup, agent improvement, and future-scale data sourcing.
