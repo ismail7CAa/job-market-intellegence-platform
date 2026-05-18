@@ -61,12 +61,13 @@ JOB_POSTINGS_SCHEMA = pa.DataFrameSchema(
         "description": pa.Column(str, nullable=False),
         "required_skills": pa.Column(object, nullable=False),
         "posted_date": pa.Column(
-            object,
+            pa.DateTime,
             Check(_is_not_in_future, element_wise=False),
             nullable=False,
+            coerce=True,
         ),
         "source": pa.Column(str, nullable=False),
-        "url": pa.Column(str, nullable=True, required=False),
+        "url": pa.Column(str, nullable=True, required=False, coerce=True),
     },
     checks=Check(_salary_bounds_are_valid, element_wise=False),
     strict=False,
@@ -80,7 +81,7 @@ def jobs_to_dataframe(jobs: Iterable[JobPosting | Dict]) -> pd.DataFrame:
         if isinstance(job, dict):
             records.append(job)
         elif hasattr(job, "model_dump"):
-            records.append(job.model_dump(mode="json"))
+            records.append(job.model_dump(mode="python"))
         else:
             records.append(job.dict())
 
