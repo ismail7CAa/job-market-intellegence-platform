@@ -150,17 +150,16 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/jmip_deploy_key
           chmod 600 ~/.ssh/jmip_deploy_key
-          ssh-keyscan -T 30 -p "$EC2_PORT" "$EC2_HOST" >> ~/.ssh/known_hosts
 
       - name: Copy free-tier compose file
         run: |
-          ssh -i ~/.ssh/jmip_deploy_key -p "$EC2_PORT" "$EC2_USER@$EC2_HOST" "mkdir -p ${APP_DIR}/database"
-          scp -i ~/.ssh/jmip_deploy_key -P "$EC2_PORT" docker-compose.free-tier.yml "$EC2_USER@$EC2_HOST:${APP_DIR}/docker-compose.free-tier.yml"
-          scp -i ~/.ssh/jmip_deploy_key -P "$EC2_PORT" database/init.sql "$EC2_USER@$EC2_HOST:${APP_DIR}/database/init.sql"
+          ssh -i ~/.ssh/jmip_deploy_key -p "$EC2_PORT" -o StrictHostKeyChecking=accept-new "$EC2_USER@$EC2_HOST" "mkdir -p ${APP_DIR}/database"
+          scp -i ~/.ssh/jmip_deploy_key -P "$EC2_PORT" -o StrictHostKeyChecking=accept-new docker-compose.free-tier.yml "$EC2_USER@$EC2_HOST:${APP_DIR}/docker-compose.free-tier.yml"
+          scp -i ~/.ssh/jmip_deploy_key -P "$EC2_PORT" -o StrictHostKeyChecking=accept-new database/init.sql "$EC2_USER@$EC2_HOST:${APP_DIR}/database/init.sql"
 
       - name: Deploy on EC2
         run: |
-          ssh -i ~/.ssh/jmip_deploy_key -p "$EC2_PORT" "$EC2_USER@$EC2_HOST" <<EOF
+          ssh -i ~/.ssh/jmip_deploy_key -p "$EC2_PORT" -o StrictHostKeyChecking=accept-new "$EC2_USER@$EC2_HOST" <<EOF
           set -e
           cd ${APP_DIR}
 
