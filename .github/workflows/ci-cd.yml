@@ -8,7 +8,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: ismail7caa/job-market-intellegence-platform
 
 jobs:
   # Code Quality & Testing
@@ -134,7 +134,7 @@ jobs:
       packages: read
     env:
       APP_DIR: /home/ubuntu/job-market-intelligence-platform
-      APP_IMAGE: ghcr.io/${{ github.repository }}:main
+      APP_IMAGE: ghcr.io/ismail7caa/job-market-intellegence-platform:main
       EC2_HOST: ${{ secrets.EC2_HOST }}
       EC2_PORT: ${{ secrets.EC2_PORT || '22' }}
       EC2_USER: ${{ secrets.EC2_USER }}
