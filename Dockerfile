@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy runtime requirements and install Python dependencies
 COPY requirements-runtime.txt .
-RUN pip install --user --no-cache-dir -r requirements-runtime.txt
+RUN pip install --prefix=/install --no-cache-dir -r requirements-runtime.txt
 
 # Stage 2: Runtime
 FROM python:3.11-slim
@@ -26,11 +26,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Python dependencies from builder
-COPY --from=builder /root/.local /root/.local
+COPY --from=builder /install /usr/local
 
-# Set PATH for pip installations
-ENV PATH=/root/.local/bin:$PATH \
-    PYTHONUNBUFFERED=1 \
+# Runtime Python settings
+ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
 # Copy application code
