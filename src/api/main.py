@@ -1,14 +1,16 @@
 """FastAPI application for Job Market Intelligence Platform."""
 
 import json
+from collections import defaultdict, deque
 from datetime import datetime
 from html import escape
 from pathlib import Path
+from time import monotonic
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from loguru import logger
 from sqlalchemy import text
 
@@ -56,15 +58,98 @@ app = FastAPI(
     version="0.1.0"
 )
 
-# CORS middleware
 settings = get_settings()
+RATE_LIMIT_EXEMPT_PATHS = {"/health", "/ready"}
+_rate_limit_buckets: dict[str, deque[float]] = defaultdict(deque)
+
+
+def _configured_cors_origins() -> list[str]:
+    """Return configured CORS origins with unsafe production wildcard protection."""
+    origins = [origin.strip() for origin in settings.cors_allow_origins if origin.strip()]
+    if "*" in origins and not settings.debug:
+        logger.warning("Ignoring wildcard CORS origin because DEBUG is disabled.")
+        return [origin for origin in origins if origin != "*"]
+    return origins
+
+
+def _client_ip(request: Request) -> str:
+    """Resolve a stable client key for public API rate limiting."""
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    if forwarded_for:
+        return forwarded_for.split(",", maxsplit=1)[0].strip()
+    if request.client:
+        return request.client.host
+    return "unknown"
+
+
+def _is_rate_limited(client_ip: str, path: str) -> bool:
+    """Apply a small in-memory request limit suitable for the single-instance demo."""
+    if path in RATE_LIMIT_EXEMPT_PATHS:
+        return False
+
+    limit = max(settings.rate_limit_requests, 1)
+    window_seconds = max(settings.rate_limit_window_seconds, 1)
+    now = monotonic()
+    bucket = _rate_limit_buckets[client_ip]
+
+    while bucket and now - bucket[0] > window_seconds:
+        bucket.popleft()
+
+    if len(bucket) >= limit:
+        return True
+
+    bucket.append(now)
+    return False
+
+
+def _require_admin_token(token: str | None) -> None:
+    """Protect ingestion endpoints from public discovery and unauthenticated use."""
+    configured_token = settings.ingestion_api_token.strip()
+    if not configured_token:
+        raise HTTPException(status_code=404, detail="Not found.")
+    if token != configured_token:
+        raise HTTPException(status_code=403, detail="Forbidden.")
+
+
+cors_origins = _configured_cors_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_allow_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=cors_origins,
+    allow_credentials=bool(cors_origins),
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Admin-Token"],
 )
+
+
+@app.middleware("http")
+async def public_backend_guardrails(request: Request, call_next):
+    """Log requests and rate-limit public traffic before it reaches endpoints."""
+    started_at = monotonic()
+    client_ip = _client_ip(request)
+    path = request.url.path
+
+    if _is_rate_limited(client_ip, path):
+        duration_ms = round((monotonic() - started_at) * 1000, 2)
+        logger.warning(
+            "rate_limited method={} path={} client={} duration_ms={}",
+            request.method,
+            path,
+            client_ip,
+            duration_ms,
+        )
+        return JSONResponse(status_code=429, content={"detail": "Rate limit exceeded."})
+
+    response = await call_next(request)
+    duration_ms = round((monotonic() - started_at) * 1000, 2)
+    logger.info(
+        "request method={} path={} status={} client={} duration_ms={}",
+        request.method,
+        path,
+        response.status_code,
+        client_ip,
+        duration_ms,
+    )
+    return response
 
 # Global instances
 analyzer = SkillDemandAnalyzer()
@@ -812,8 +897,21 @@ async def get_engine_workflow():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
+    """Return a cheap liveness signal for load balancers and uptime checks."""
+    return {
+        "status": "healthy",
+        "service": "job-market-api",
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+@app.get("/ready")
+async def readiness_check():
+    """Return dependency readiness for deployment rollouts."""
     db_status = "disconnected"
+    data_status = "missing"
+    job_count = 0
+
     if _db:
         try:
             with _db.get_session() as session:
@@ -821,30 +919,39 @@ async def health_check():
             db_status = "connected"
         except Exception as exc:
             logger.warning(f"Database health check failed: {exc}")
-            db_status = "unhealthy"
-    return {
-        "status": "healthy" if db_status == "connected" else "degraded",
-        "database": db_status,
-        "timestamp": datetime.now().isoformat()
-    }
+            db_status = "error"
+
+    try:
+        _ensure_pipeline_jobs_loaded()
+        job_count = len(_get_loaded_job_dicts())
+        data_status = "loaded" if job_count else "empty"
+    except Exception as exc:
+        logger.warning(f"Readiness data check failed: {exc}")
+        data_status = "error"
+
+    is_ready = db_status == "connected" and data_status == "loaded"
+    return JSONResponse(
+        status_code=200 if is_ready else 503,
+        content={
+            "status": "ready" if is_ready else "not_ready",
+            "service": "job-market-api",
+            "database": db_status,
+            "data": data_status,
+            "job_count": job_count,
+            "timestamp": datetime.now().isoformat(),
+        },
+    )
 
 
-@app.post("/data/fetch")
+@app.post("/data/fetch", include_in_schema=False)
 async def fetch_data(
     sources: list[str] = Query(settings.default_sources),
     keywords: list[str] = Query(settings.default_keywords),
-    limit: int = Query(settings.default_limit_per_source, ge=10, le=1000)
+    limit: int = Query(settings.default_limit_per_source, ge=10, le=1000),
+    admin_token: str | None = Header(default=None, alias="X-Admin-Token", include_in_schema=False),
 ):
-    """Fetch job data from configured sources.
-    
-    Args:
-        sources: Data sources (linkedin, kaggle)
-        keywords: Search keywords
-        limit: Maximum jobs per source
-        
-    Returns:
-        Pipeline execution result with statistics
-    """
+    """Fetch job data from configured sources behind an admin token."""
+    _require_admin_token(admin_token)
     try:
         decisions = evaluate_sources(sources)
         blocked = [decision for decision in decisions if not decision.allowed]
@@ -876,9 +983,9 @@ async def fetch_data(
             keywords=keywords,
             limit_per_source=limit
         )
-        
+
         stats = pipeline.get_statistics()
-        
+
         return {
             "success": True,
             "total_jobs": len(jobs),

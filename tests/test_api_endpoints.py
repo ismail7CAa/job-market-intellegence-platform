@@ -6,6 +6,7 @@ fastapi = pytest.importorskip("fastapi")
 testclient = pytest.importorskip("fastapi.testclient")
 
 from src.api.main import app
+import src.api.main as api_main
 
 
 client = testclient.TestClient(app)
@@ -189,11 +190,23 @@ class TestApiEndpoints:
         assert payload["approved_for_current_stage"] is True
         assert payload["sources"][0]["allowed"] is True
 
-    def test_data_fetch_blocks_unapproved_live_sources(self):
-        """Live fetch should not silently use unapproved scraping/mock sources."""
+    def test_data_fetch_is_hidden_without_admin_token(self):
+        """Live fetch should not be discoverable or usable as a public route."""
+        response = client.post(
+            "/data/fetch",
+            params={"sources": ["legal_demo_csv"], "keywords": ["Nurse"], "limit": 10},
+        )
+
+        assert response.status_code == 404
+
+    def test_data_fetch_with_admin_token_still_enforces_source_governance(self, monkeypatch):
+        """Protected live fetch should still block unapproved scraping/mock sources."""
+        monkeypatch.setattr(api_main.settings, "ingestion_api_token", "secret-token")
+
         response = client.post(
             "/data/fetch",
             params={"sources": ["linkedin"], "keywords": ["Nurse"], "limit": 10},
+            headers={"X-Admin-Token": "secret-token"},
         )
 
         assert response.status_code == 403
@@ -215,6 +228,7 @@ class TestApiEndpoints:
         """OpenAPI should document concrete job response models."""
         payload = client.get("/openapi.json").json()
 
+        assert "/data/fetch" not in payload["paths"]
         assert "JobSearchResponse" in payload["components"]["schemas"]
         assert "JobDetailResponse" in payload["components"]["schemas"]
         assert "ApplyHandoff" in payload["components"]["schemas"]
@@ -240,3 +254,32 @@ class TestApiEndpoints:
         """The product backend should not expose the old agent routes."""
         assert client.post("/query", params={"question": "What are the top skills?"}).status_code == 404
         assert client.post("/agent/explain", params={"question": "Why?", "job_id": "prod_005"}).status_code == 404
+
+    def test_health_and_readiness_are_distinct(self):
+        """Liveness should be cheap while readiness checks dependencies."""
+        health = client.get("/health")
+        ready = client.get("/ready")
+
+        assert health.status_code == 200
+        assert health.json()["status"] == "healthy"
+        assert "database" not in health.json()
+        assert ready.status_code == 200
+        assert ready.json()["status"] == "ready"
+        assert ready.json()["database"] == "connected"
+        assert ready.json()["data"] == "loaded"
+        assert ready.json()["job_count"] >= 120
+
+    def test_rate_limiting_rejects_excess_public_requests(self, monkeypatch):
+        """Public routes should reject bursts over the configured request limit."""
+        monkeypatch.setattr(api_main.settings, "rate_limit_requests", 1)
+        monkeypatch.setattr(api_main.settings, "rate_limit_window_seconds", 60)
+        api_main._rate_limit_buckets.clear()
+
+        headers = {"X-Forwarded-For": "203.0.113.77"}
+        first = client.get("/jobs/search", params={"per_page": 1}, headers=headers)
+        second = client.get("/jobs/search", params={"per_page": 1}, headers=headers)
+
+        api_main._rate_limit_buckets.clear()
+        assert first.status_code == 200
+        assert second.status_code == 429
+        assert second.json()["detail"] == "Rate limit exceeded."

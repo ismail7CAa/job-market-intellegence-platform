@@ -68,10 +68,21 @@ class AppSettings(BaseSettings):
     debug: bool = Field(default=False, validation_alias="DEBUG")
     market_region: str = Field(default="Germany", validation_alias="MARKET_REGION")
     default_currency: str = Field(default="EUR", validation_alias="DEFAULT_CURRENCY")
+    public_base_url: str = Field(default="http://localhost:8000", validation_alias="PUBLIC_BASE_URL")
     cors_allow_origins: List[str] = Field(
-        default_factory=lambda: ["*"],
+        default_factory=lambda: [
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://localhost:8000",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:8000",
+        ],
         validation_alias="CORS_ALLOW_ORIGINS",
     )
+    ingestion_api_token: str = Field(default="", validation_alias="INGESTION_API_TOKEN")
+    rate_limit_requests: int = Field(default=600, validation_alias="RATE_LIMIT_REQUESTS")
+    rate_limit_window_seconds: int = Field(default=60, validation_alias="RATE_LIMIT_WINDOW_SECONDS")
 
     nlp_model: str = Field(default="bert-base-uncased", validation_alias="NLP_MODEL")
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")

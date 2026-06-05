@@ -135,11 +135,15 @@ The backend was changed to enforce this strategy:
 - Added a `JobPostingProvider` adapter interface.
 - Default source changed to `legal_demo_csv`.
 - `/data/fetch` now blocks unapproved sources such as LinkedIn and Kaggle.
+- `/data/fetch` is hidden from OpenAPI and requires `X-Admin-Token` when `INGESTION_API_TOKEN` is configured, so ingestion is not part of the anonymous public surface.
 - `/data/governance` exposes the current source policy and legal basis.
 - `/engine/workflow` describes the product workflow from search intent to apply handoff.
 - `/jobs/{job_id}/apply` centralizes the apply handoff so the frontend does not invent apply behavior.
 - Public job APIs now use explicit Pydantic response schemas.
 - The public AI-agent endpoints were removed because they did not support the core job-search/apply workflow.
+- CORS now defaults to explicit local frontend origins rather than a wildcard.
+- Public requests now pass through basic request logging and a per-client rate limiter.
+- `/health` is a cheap liveness probe, while `/ready` checks database and loaded job-data readiness.
 
 ## Problems Found During Backend Hardening
 
@@ -178,7 +182,48 @@ Decision:
 - Deduplicate by `source + source_posting_id`.
 - Keep the platform `id` as the internal API identifier.
 
-### 3. Expired listings needed explicit state
+### 3. Ingestion was exposed too broadly
+
+The fetch route is useful for local development and controlled provider ingestion, but it is not a public product feature. A public visitor should be able to search jobs, inspect job details, understand source governance, and open an apply link. They should not be able to trigger ingestion.
+
+Problems:
+
+- `/data/fetch` appeared in OpenAPI next to user-facing search routes
+- anonymous callers could reach a write-like operational action
+- source governance blocked bad sources, but authentication and route visibility were still too weak for redeployment
+
+Decision:
+
+- Hide `/data/fetch` from OpenAPI.
+- Require `X-Admin-Token` backed by `INGESTION_API_TOKEN`.
+- Return `404` when no ingestion token is configured, so the route is closed by default.
+- Keep source-governance checks after authentication, because an admin token should not bypass legal-source policy.
+
+### 4. Public backend guardrails were missing
+
+The backend had grown from a portfolio analytics API into a job-search and apply engine. Before redeployment, the public surface needed basic operational controls.
+
+Problems:
+
+- CORS defaulted to `*`, which is too permissive for a public deployment
+- there was no rate limit for anonymous routes
+- request behavior was not logged consistently
+- `/health` mixed liveness and dependency readiness, which makes deployment checks harder to reason about
+
+Decision:
+
+- Default CORS to explicit localhost development origins and require deployment-specific frontend origins through configuration.
+- Add simple in-memory rate limiting for the current single-instance EC2 deployment.
+- Add request logging for method, path, status, client IP, and duration without logging search text or query details.
+- Keep `/health` as liveness and add `/ready` for database plus job-data readiness.
+
+Not chosen yet:
+
+- Full authentication for every endpoint. The current product surface is read-heavy and intended to be publicly browsable.
+- Redis-backed distributed rate limiting. That becomes necessary when the API scales beyond one instance.
+- API gateway or WAF rules. Those are useful production controls, but they add infrastructure before the single-instance backend contract is stable.
+
+### 5. Expired listings needed explicit state
 
 `expires_at` alone tells us when a job should no longer appear, but user-facing queries need a simple active/expired filter.
 
@@ -195,7 +240,7 @@ Decision:
 - Exclude expired jobs from default search, detail, facets, and similar-job queries.
 - Do not auto-expire the local seed dataset on app startup, because the portfolio seed has fixed historical dates and would otherwise disappear during demos. Live provider refresh jobs can call `mark_expired` after each ingestion run.
 
-### 4. Similar jobs needed persisted matching signals
+### 6. Similar jobs needed persisted matching signals
 
 The existing similarity logic used role type, location, remote status, and required skills. The SQL model did not persist `required_skills`, so moving search into the repository would have dropped an important matching signal.
 
@@ -204,7 +249,7 @@ Decision:
 - Persist `required_skills` as compact JSON text for the repository stage.
 - Keep a future normalized `job_skills` relation available for deeper analytics and ESCO enrichment.
 
-### 5. Local SQLite schemas drifted from the SQLAlchemy model
+### 7. Local SQLite schemas drifted from the SQLAlchemy model
 
 Existing developer SQLite databases are not automatically changed by `create_all` when new columns are added. After adding provider-ready fields, older local databases could crash with missing-column errors.
 

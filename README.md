@@ -138,10 +138,9 @@ Runtime configuration lives in `.env`; use [.env.example](.env.example) as the t
 
 ## API Surface
 
-The FastAPI service exposes:
+The public FastAPI surface exposes read-only search, market-context, and apply-handoff routes:
 
 - `/` 
-- `/health`
 - `/jobs/search`
 - `/jobs/search/facets`
 - `/jobs/{job_id}`
@@ -150,7 +149,6 @@ The FastAPI service exposes:
 - `/market/esco/normalize`
 - `/data/governance`
 - `/engine/workflow`
-- `/data/fetch`
 - `/analyze/skills`
 - `/trends/skills`
 - `/skills/{skill_name}/salary-premium`
@@ -161,6 +159,21 @@ The FastAPI service exposes:
 - `/export/skills-csv`
 - `/status/pipeline`
 - `/stats/jobs`
+
+Operational routes are split by purpose:
+
+- `/health`: cheap liveness check for uptime/load-balancer probes
+- `/ready`: dependency readiness check for database and loaded job data
+
+Protected/internal routes:
+
+- `/data/fetch`: hidden from OpenAPI and blocked unless `INGESTION_API_TOKEN` is configured and sent as `X-Admin-Token`; source governance still rejects unapproved sources even after authentication
+
+Public backend guardrails:
+
+- CORS defaults to local development origins, not `*`; set `CORS_ALLOW_ORIGINS` explicitly for the deployed frontend URL.
+- Public requests are rate-limited per client IP with `RATE_LIMIT_REQUESTS` and `RATE_LIMIT_WINDOW_SECONDS`.
+- Basic request logging records method, path, status, client IP, and duration without logging query payloads.
 
 When live-ingested jobs are not loaded yet, the API can fall back to the local sample datasets in `data/` for development workflows.
 
@@ -193,7 +206,7 @@ The public AWS EC2 deployment is currently stopped while the backend and data st
 - Replace demo listings with a production-safe provider, explicit company feed, or official listings API only after terms are confirmed.
 - Add data drift checks and model monitoring around salary distributions, skill vocabulary shifts, and role-classification confidence.
 - Promote the BigQuery/dbt/Feast path from scaffold to fully exercised cloud workflow.
-- Add authentication and rate limiting to the API before exposing write-like endpoints publicly.
+- Move rate limiting from the current single-process in-memory guard to Redis or an API gateway if the service is scaled horizontally.
 - Expand CI to run linting, type checks, Docker builds, and targeted integration tests against ephemeral services.
 
 ## References
