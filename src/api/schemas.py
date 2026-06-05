@@ -29,6 +29,7 @@ class SalaryFields(ApiModel):
     salary_midpoint: float | None = None
     salary_label: str
     salary_type: Literal["listed", "missing", "estimated"]
+    salary_estimation_basis: str | None = None
 
 
 class JobResult(SalaryFields):
@@ -72,6 +73,8 @@ class SearchSummary(ApiModel):
 
     average_salary: float | None = None
     salary_sample_size: int
+    listed_salary_sample_size: int = 0
+    estimated_salary_sample_size: int = 0
     top_companies: list[FacetCount]
     top_locations: list[FacetCount]
     role_types: list[FacetCount]
@@ -124,6 +127,9 @@ class SalaryDetail(ApiModel):
     midpoint: float | None = None
     label: str
     type: Literal["listed", "missing", "estimated"]
+    is_estimated: bool = False
+    confidence: float | None = None
+    estimation_basis: str | None = None
 
 
 class CompanyProfile(ApiModel):

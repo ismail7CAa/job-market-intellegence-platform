@@ -87,6 +87,24 @@ class TestApiEndpoints:
         assert payload["total"] >= 1
         assert all("Mittelstand Finance" in job["company"] for job in payload["jobs"])
 
+    def test_job_search_estimates_missing_salary_with_confidence(self):
+        """Jobs without listed salaries should receive clearly marked estimates."""
+        response = client.get(
+            "/jobs/search",
+            params={"q": "Radiology Technician", "location": "Frankfurt"},
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        job = payload["jobs"][0]
+        assert job["id"] == "prod_005"
+        assert job["salary_type"] == "estimated"
+        assert job["salary_is_estimated"] is True
+        assert job["salary_label"].startswith("Estimated ")
+        assert job["salary_confidence"] > 0
+        assert job["salary_estimation_basis"]
+        assert payload["summary"]["estimated_salary_sample_size"] >= 1
+
     def test_search_facets_endpoint_returns_filter_values(self):
         """Facets endpoint should expose filters for the results UI."""
         response = client.get("/jobs/search/facets")

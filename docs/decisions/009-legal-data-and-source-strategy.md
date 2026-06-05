@@ -263,6 +263,8 @@ Completed on 2026-06-05:
 - `/market/esco/normalize` exposes query normalization, and search ranking uses ESCO-expanded terms without treating ESCO as a listing source
 - `/jobs/search` now supports pagination, sorting, company filters, role-type filters, salary range filters, employment-type filters, relevance scores, and match reasons
 - search matching now combines direct text matches, normalized occupation matches, skill matches, and ESCO-backed German-English synonym matches
+- salary estimation was added for postings without listed pay, using role type, location, occupation group, and experience-level peers
+- estimated salaries are never presented as listed salaries; API responses include `salary_type=estimated`, `salary_is_estimated=true`, confidence, and estimation basis
 
 ## Source Approval Matrix
 

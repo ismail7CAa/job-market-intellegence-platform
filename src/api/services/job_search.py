@@ -68,6 +68,146 @@ class JobSearchService:
         return (float(salary_min) + float(salary_max)) / 2
 
     @staticmethod
+    def _salary_bounds(job: dict) -> tuple[float, float] | None:
+        """Return salary bounds when both values are present."""
+        salary_min = job.get("salary_min")
+        salary_max = job.get("salary_max")
+        if salary_min is None or salary_max is None:
+            return None
+        return float(salary_min), float(salary_max)
+
+    @staticmethod
+    def _is_listed_salary(job: dict) -> bool:
+        """Return whether a job has a real listed salary."""
+        return (
+            job.get("salary_min") is not None
+            and job.get("salary_max") is not None
+            and not bool(job.get("salary_is_estimated", False))
+        )
+
+    @staticmethod
+    def _experience_multiplier(experience_level: str | None) -> float:
+        level = str(experience_level or "").lower()
+        if level in {"entry", "junior", "trainee"}:
+            return 0.9
+        if level in {"senior", "lead", "manager"}:
+            return 1.12
+        return 1.0
+
+    @staticmethod
+    def _location_multiplier(location: str | None) -> float:
+        value = str(location or "").lower()
+        if any(city in value for city in ["munich", "frankfurt", "stuttgart", "hamburg"]):
+            return 1.05
+        if any(city in value for city in ["leipzig", "dresden", "bremen", "hannover"]):
+            return 0.95
+        return 1.0
+
+    def estimate_salary(self, job: dict, reference_jobs: list[dict] | None = None) -> dict | None:
+        """Estimate missing salary from role, location, and experience peers."""
+        if self._is_listed_salary(job):
+            return None
+
+        peers = [
+            item for item in (reference_jobs or self._jobs())
+            if item.get("id") != job.get("id") and self._is_listed_salary(item)
+        ]
+        if not peers:
+            return None
+
+        role = str(job.get("role_type") or "").lower()
+        occupation_group = str(job.get("occupation_group") or "").lower()
+        location = str(job.get("location") or "").lower()
+        experience = str(job.get("experience_level") or "").lower()
+
+        candidate_sets = [
+            (
+                "role type + location + experience level",
+                0.86,
+                [
+                    item for item in peers
+                    if str(item.get("role_type") or "").lower() == role
+                    and str(item.get("location") or "").lower() == location
+                    and str(item.get("experience_level") or "").lower() == experience
+                ],
+            ),
+            (
+                "role type + location",
+                0.78,
+                [
+                    item for item in peers
+                    if str(item.get("role_type") or "").lower() == role
+                    and str(item.get("location") or "").lower() == location
+                ],
+            ),
+            (
+                "role type + experience level",
+                0.7,
+                [
+                    item for item in peers
+                    if str(item.get("role_type") or "").lower() == role
+                    and str(item.get("experience_level") or "").lower() == experience
+                ],
+            ),
+            (
+                "role type",
+                0.62,
+                [
+                    item for item in peers
+                    if str(item.get("role_type") or "").lower() == role
+                ],
+            ),
+            (
+                "occupation group",
+                0.54,
+                [
+                    item for item in peers
+                    if str(item.get("occupation_group") or "").lower() == occupation_group
+                ],
+            ),
+        ]
+
+        basis = None
+        confidence = 0.0
+        matches: list[dict] = []
+        for candidate_basis, candidate_confidence, candidate_matches in candidate_sets:
+            if candidate_matches:
+                basis = candidate_basis
+                confidence = candidate_confidence
+                matches = candidate_matches
+                break
+        if not matches:
+            return None
+
+        mins = [float(item["salary_min"]) for item in matches]
+        maxes = [float(item["salary_max"]) for item in matches]
+        estimated_min = sum(mins) / len(mins)
+        estimated_max = sum(maxes) / len(maxes)
+
+        if basis in {"role type", "occupation group"}:
+            multiplier = (
+                self._experience_multiplier(job.get("experience_level"))
+                * self._location_multiplier(job.get("location"))
+            )
+            estimated_min *= multiplier
+            estimated_max *= multiplier
+
+        confidence = min(confidence + min(len(matches), 5) * 0.02, 0.9)
+        return {
+            "salary_min": round(estimated_min, -2),
+            "salary_max": round(estimated_max, -2),
+            "salary_midpoint": round((estimated_min + estimated_max) / 2, 2),
+            "salary_is_estimated": True,
+            "salary_confidence": round(confidence, 2),
+            "salary_estimation_basis": basis,
+        }
+
+    def effective_salary(self, job: dict, reference_jobs: list[dict] | None = None) -> dict:
+        """Return listed or estimated salary fields without hiding the source type."""
+        formatted = self.format_salary(job, reference_jobs=reference_jobs)
+        return formatted
+
+    @staticmethod
     def _normalize_search_text(value: object) -> str:
         """Normalize values used by the local search index."""
         if value is None:
@@ -115,9 +255,10 @@ class JobSearchService:
         job: dict,
         salary_min: float | None = None,
         salary_max: float | None = None,
+        reference_jobs: list[dict] | None = None,
     ) -> bool:
         """Return whether a job salary overlaps the requested salary range."""
-        midpoint = self.salary_midpoint(job)
+        midpoint = self.effective_salary(job, reference_jobs=reference_jobs).get("salary_midpoint")
         if midpoint is None:
             return salary_min is None and salary_max is None
         if salary_min is not None and midpoint < salary_min:
@@ -136,6 +277,7 @@ class JobSearchService:
         salary_min: float | None = None,
         salary_max: float | None = None,
         employment_type: str | None = None,
+        reference_jobs: list[dict] | None = None,
     ) -> bool:
         """Apply structured search filters to one job."""
         if location and location.lower().strip() not in str(job.get("location", "")).lower():
@@ -149,7 +291,12 @@ class JobSearchService:
             return False
         if employment_type and employment_type.lower().strip() not in str(job.get("employment_type", "")).lower():
             return False
-        return self._salary_matches(job, salary_min=salary_min, salary_max=salary_max)
+        return self._salary_matches(
+            job,
+            salary_min=salary_min,
+            salary_max=salary_max,
+            reference_jobs=reference_jobs,
+        )
 
     def _score_job(self, job: dict, query_terms: list[str]) -> tuple[float, list[str]]:
         """Score one job and explain why it matched."""
@@ -196,6 +343,16 @@ class JobSearchService:
                 elif term in description and "description match" not in reasons:
                     reasons.append("description match")
 
+        return score, reasons
+
+    @staticmethod
+    def _boost_exact_query_match(job: dict, query: str, score: float, reasons: list[str]) -> tuple[float, list[str]]:
+        """Boost exact title matches above broad ESCO occupation aliases."""
+        normalized_query = query.strip().lower()
+        if normalized_query and normalized_query in str(job.get("title", "")).lower():
+            score += 20
+            if "title match" not in reasons:
+                reasons.insert(0, "title match")
         return score, reasons
 
     @staticmethod
@@ -257,25 +414,48 @@ class JobSearchService:
             ),
         }
 
-    def format_salary(self, job: dict) -> dict:
+    def format_salary(self, job: dict, reference_jobs: list[dict] | None = None) -> dict:
         """Format listed or estimated salary fields for search results."""
         midpoint = self.salary_midpoint(job)
         salary_min = job.get("salary_min")
         salary_max = job.get("salary_max")
         if midpoint is None:
+            estimate = self.estimate_salary(job, reference_jobs=reference_jobs)
+            if estimate:
+                return {
+                    "salary_min": estimate["salary_min"],
+                    "salary_max": estimate["salary_max"],
+                    "salary_midpoint": estimate["salary_midpoint"],
+                    "salary_label": (
+                        f"Estimated {int(float(estimate['salary_min'])):,}-"
+                        f"{int(float(estimate['salary_max'])):,} {self.currency}"
+                    ),
+                    "salary_type": "estimated",
+                    "salary_is_estimated": True,
+                    "salary_confidence": estimate["salary_confidence"],
+                    "salary_estimation_basis": estimate["salary_estimation_basis"],
+                }
             return {
                 "salary_min": None,
                 "salary_max": None,
                 "salary_midpoint": None,
                 "salary_label": "Salary not listed",
                 "salary_type": "missing",
+                "salary_is_estimated": False,
+                "salary_confidence": None,
+                "salary_estimation_basis": None,
             }
+        salary_type = "estimated" if job.get("salary_is_estimated") else "listed"
+        salary_label_prefix = "Estimated " if salary_type == "estimated" else ""
         return {
             "salary_min": salary_min,
             "salary_max": salary_max,
             "salary_midpoint": midpoint,
-            "salary_label": f"{int(float(salary_min)):,}-{int(float(salary_max)):,} {self.currency}",
-            "salary_type": "listed",
+            "salary_label": f"{salary_label_prefix}{int(float(salary_min)):,}-{int(float(salary_max)):,} {self.currency}",
+            "salary_type": salary_type,
+            "salary_is_estimated": bool(job.get("salary_is_estimated", False)),
+            "salary_confidence": job.get("salary_confidence") if job.get("salary_is_estimated") else 1.0,
+            "salary_estimation_basis": job.get("salary_estimation_basis"),
         }
 
     def rank_jobs(
@@ -292,10 +472,12 @@ class JobSearchService:
         sort: str = "relevance",
         limit: int = 25,
         offset: int = 0,
+        reference_jobs: list[dict] | None = None,
     ) -> list[dict]:
         """Rank local jobs against a keyword query and optional filters."""
         query_terms = self._expanded_query_terms(query)
         ranked: list[dict] = []
+        salary_reference_jobs = reference_jobs or jobs
 
         for job in jobs:
             if not self._filter_job(
@@ -307,10 +489,12 @@ class JobSearchService:
                 salary_min=salary_min,
                 salary_max=salary_max,
                 employment_type=employment_type,
+                reference_jobs=salary_reference_jobs,
             ):
                 continue
 
             score, reasons = self._score_job(job, query_terms)
+            score, reasons = self._boost_exact_query_match(job, query, score, reasons)
             if query_terms and score == 0:
                 continue
 
@@ -318,7 +502,7 @@ class JobSearchService:
                 **job,
                 "relevance_score": round(score, 2),
                 "match_reasons": reasons,
-                **self.format_salary(job),
+                **self.format_salary(job, reference_jobs=salary_reference_jobs),
             }
             ranked.append(ranked_job)
 
@@ -333,9 +517,9 @@ class JobSearchService:
         )
         return ranked[offset: offset + limit]
 
-    def build_job_result(self, job: dict) -> dict:
+    def build_job_result(self, job: dict, reference_jobs: list[dict] | None = None) -> dict:
         """Project a loaded job into the public search-result contract."""
-        salary = self.format_salary(job)
+        salary = self.format_salary(job, reference_jobs=reference_jobs)
         return {
             "id": job.get("id"),
             "title": job.get("title"),
@@ -361,8 +545,9 @@ class JobSearchService:
             "experience_level": job.get("experience_level"),
             "employment_type": job.get("employment_type"),
             "salary_period": job.get("salary_period"),
-            "salary_is_estimated": job.get("salary_is_estimated", False),
-            "salary_confidence": job.get("salary_confidence"),
+            "salary_is_estimated": salary.get("salary_is_estimated", job.get("salary_is_estimated", False)),
+            "salary_confidence": salary.get("salary_confidence", job.get("salary_confidence")),
+            "salary_estimation_basis": salary.get("salary_estimation_basis"),
             "expires_at": job.get("expires_at"),
             "last_seen_at": job.get("last_seen_at"),
             "is_expired": job.get("is_expired", False),
@@ -373,8 +558,9 @@ class JobSearchService:
 
     def build_job_detail(self, job: dict) -> dict:
         """Build the full job detail payload for a result detail page."""
-        result = self.build_job_result(job)
-        salary = self.format_salary(job)
+        reference_jobs = self._jobs()
+        result = self.build_job_result(job, reference_jobs=reference_jobs)
+        salary = self.format_salary(job, reference_jobs=reference_jobs)
         return {
             **result,
             "full_description": job.get("description"),
@@ -385,6 +571,9 @@ class JobSearchService:
                 "midpoint": salary["salary_midpoint"],
                 "label": salary["salary_label"],
                 "type": salary["salary_type"],
+                "is_estimated": salary["salary_is_estimated"],
+                "confidence": salary["salary_confidence"],
+                "estimation_basis": salary["salary_estimation_basis"],
             },
             "company_profile": {
                 "name": job.get("company"),
@@ -423,7 +612,7 @@ class JobSearchService:
             return {
                 "job_id": job.get("id"),
                 "count": len(similar_jobs),
-                "jobs": [self.build_job_result(candidate) for candidate in similar_jobs],
+                "jobs": [self.build_job_result(candidate, reference_jobs=self._jobs()) for candidate in similar_jobs],
             }
 
         ranked = [
@@ -436,7 +625,7 @@ class JobSearchService:
         return {
             "job_id": job.get("id"),
             "count": min(len(ranked), limit),
-            "jobs": [self.build_job_result(candidate) for _, candidate in ranked[:limit]],
+            "jobs": [self.build_job_result(candidate, reference_jobs=self._jobs()) for _, candidate in ranked[:limit]],
         }
 
     def build_job_market_context(self, job: dict) -> dict:
@@ -529,6 +718,7 @@ class JobSearchService:
         page = max(page, 1)
         sort = sort if sort in self.ALLOWED_SORTS else "relevance"
         offset = (page - 1) * per_page
+        salary_reference_jobs = self._jobs()
         repository = self._repository()
         if repository:
             jobs = repository.query_job_dicts(
@@ -555,10 +745,11 @@ class JobSearchService:
             sort=sort,
             limit=len(jobs) or per_page,
             offset=0,
+            reference_jobs=salary_reference_jobs,
         )
         matches = ranked_matches[offset: offset + per_page]
-        result_jobs = [self.build_job_result(job) for job in matches]
-        all_result_jobs = [self.build_job_result(job) for job in ranked_matches]
+        result_jobs = [self.build_job_result(job, reference_jobs=salary_reference_jobs) for job in matches]
+        all_result_jobs = [self.build_job_result(job, reference_jobs=salary_reference_jobs) for job in ranked_matches]
         salaries = [
             job["salary_midpoint"]
             for job in all_result_jobs
@@ -568,6 +759,8 @@ class JobSearchService:
         locations = Counter(job["location"] for job in all_result_jobs if job.get("location"))
         role_types = Counter(job["role_type"] for job in all_result_jobs if job.get("role_type"))
         total = len(ranked_matches)
+        listed_salary_count = sum(1 for job in all_result_jobs if job.get("salary_type") == "listed")
+        estimated_salary_count = sum(1 for job in all_result_jobs if job.get("salary_type") == "estimated")
 
         return {
             "query": query,
@@ -590,6 +783,8 @@ class JobSearchService:
             "summary": {
                 "average_salary": round(sum(salaries) / len(salaries), 2) if salaries else None,
                 "salary_sample_size": len(salaries),
+                "listed_salary_sample_size": listed_salary_count,
+                "estimated_salary_sample_size": estimated_salary_count,
                 "top_companies": self._counter_rows(companies, limit=5),
                 "top_locations": self._counter_rows(locations, limit=5),
                 "role_types": self._counter_rows(role_types, limit=5),

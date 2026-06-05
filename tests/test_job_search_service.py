@@ -19,6 +19,8 @@ def _jobs():
             "source_legal_basis": "Local legal demo data for portfolio use.",
             "remote_status": "onsite",
             "role_type": "Healthcare",
+            "occupation_group": "Healthcare and Nursing",
+            "experience_level": "mid",
             "url": "https://example.com/apply/nurse",
         },
         {
@@ -35,6 +37,8 @@ def _jobs():
             "source_legal_basis": "Local legal demo data for portfolio use.",
             "remote_status": "onsite",
             "role_type": "Healthcare",
+            "occupation_group": "Healthcare and Nursing",
+            "experience_level": "entry",
             "url": "https://example.com/apply/assistant",
         },
         {
@@ -52,6 +56,24 @@ def _jobs():
             "remote_status": "hybrid",
             "role_type": "Finance",
             "url": "https://example.com/apply/accountant",
+        },
+        {
+            "id": "job_4",
+            "title": "Care Coordinator",
+            "company": "Care GmbH",
+            "location": "Berlin, Germany",
+            "description": "Coordinate patient care plans.",
+            "salary_min": None,
+            "salary_max": None,
+            "job_type": "Full-time",
+            "required_skills": ["Patient Care", "Documentation"],
+            "source": "legal_demo_csv",
+            "source_legal_basis": "Local legal demo data for portfolio use.",
+            "remote_status": "onsite",
+            "role_type": "Healthcare",
+            "occupation_group": "Healthcare and Nursing",
+            "experience_level": "mid",
+            "url": "https://example.com/apply/care-coordinator",
         },
     ]
 
@@ -81,11 +103,26 @@ def test_service_filters_sorts_and_paginates_results():
         per_page=1,
     )
 
-    assert payload["total"] == 2
+    assert payload["total"] == 3
     assert payload["count"] == 1
-    assert payload["total_pages"] == 2
+    assert payload["total_pages"] == 3
     assert payload["jobs"][0]["id"] == "job_1"
     assert payload["filters"]["role_type"] == "Healthcare"
+
+
+def test_service_estimates_missing_salary_without_hiding_source_type():
+    service = JobSearchService(jobs_loader=_jobs)
+
+    payload = service.build_search_response(query="Care Coordinator", location="Berlin")
+    job = payload["jobs"][0]
+
+    assert job["id"] == "job_4"
+    assert job["salary_type"] == "estimated"
+    assert job["salary_is_estimated"] is True
+    assert job["salary_confidence"] > 0
+    assert job["salary_estimation_basis"] == "role type + location + experience level"
+    assert job["salary_label"].startswith("Estimated ")
+    assert payload["summary"]["estimated_salary_sample_size"] == 1
 
 
 def test_service_builds_detail_with_apply_handoff():
@@ -96,7 +133,7 @@ def test_service_builds_detail_with_apply_handoff():
 
     assert detail["application"]["button_label"] == "Apply"
     assert detail["application"]["apply_url"] == "https://example.com/apply/nurse"
-    assert detail["market_context"]["same_role_count"] == 2
+    assert detail["market_context"]["same_role_count"] == 3
 
 
 def test_service_ranks_similar_jobs():
@@ -105,8 +142,8 @@ def test_service_ranks_similar_jobs():
 
     similar = service.build_similar_jobs(job)
 
-    assert similar["count"] == 1
-    assert similar["jobs"][0]["id"] == "job_2"
+    assert similar["count"] == 2
+    assert similar["jobs"][0]["id"] in {"job_2", "job_4"}
 
 
 def test_service_facets_include_filter_values():
@@ -114,6 +151,6 @@ def test_service_facets_include_filter_values():
 
     facets = service.build_search_facets()
 
-    assert facets["total_jobs"] == 3
-    assert {"value": "Berlin, Germany", "count": 2} in facets["locations"]
-    assert {"value": "Healthcare", "count": 2} in facets["role_types"]
+    assert facets["total_jobs"] == 4
+    assert {"value": "Berlin, Germany", "count": 3} in facets["locations"]
+    assert {"value": "Healthcare", "count": 3} in facets["role_types"]

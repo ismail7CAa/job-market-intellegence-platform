@@ -63,7 +63,9 @@ class TestRolePredictor:
         assert "combined_text" in frame.columns
         assert "salary_avg" in frame.columns
         assert "skill_count" in frame.columns
-        assert frame["salary_avg"].notna().all()
+        assert "salary_was_missing" in frame.columns
+        assert frame["salary_avg"].notna().any()
+        assert frame["salary_was_missing"].sum() > 0
 
     def test_train_and_evaluate(self):
         """Test local model performance does not regress below baseline."""

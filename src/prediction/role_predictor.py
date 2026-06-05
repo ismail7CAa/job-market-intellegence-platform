@@ -46,6 +46,7 @@ class RolePredictor:
             "location",
             "salary_avg",
             "skill_count",
+            "salary_was_missing",
         ]
 
     @staticmethod
@@ -99,6 +100,7 @@ class RolePredictor:
             errors="coerce",
         )
         frame["salary_avg"] = frame[["salary_min", "salary_max"]].mean(axis=1)
+        frame["salary_was_missing"] = frame["salary_avg"].isna().astype(int)
         frame["source"] = self._column_or_default(frame, "source", "unknown").fillna("unknown").astype(str)
         frame["remote_status"] = self._column_or_default(
             frame,
@@ -148,7 +150,7 @@ class RolePredictor:
                             ("scaler", StandardScaler()),
                         ]
                     ),
-                    ["salary_avg", "skill_count"],
+                    ["salary_avg", "skill_count", "salary_was_missing"],
                 ),
             ]
         )
