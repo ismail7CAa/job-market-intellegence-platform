@@ -115,6 +115,7 @@ class IngestionService:
         keywords: list[str],
         limit_per_source: int = 100,
         mark_expired: bool = True,
+        dry_run: bool = False,
     ) -> IngestionBatchSummary:
         """Run one provider ingestion batch and persist normalized jobs."""
         if not sources:
@@ -138,7 +139,7 @@ class IngestionService:
             jobs = provider.fetch(request)
             stamped_jobs = self._attach_batch_id(jobs, batch_id)
             validate_job_postings(stamped_jobs)
-            saved_jobs = self.repository.save_jobs(stamped_jobs)
+            saved_jobs = [] if dry_run else self.repository.save_jobs(stamped_jobs)
             fetched_jobs.extend(stamped_jobs)
             provider_results.append(
                 ProviderIngestionSummary(
@@ -147,23 +148,28 @@ class IngestionService:
                     allowed=True,
                     fetched_count=len(stamped_jobs),
                     saved_count=len(saved_jobs),
-                    reason="Source passed governance, validation, and repository persistence.",
+                    reason=(
+                        "Source passed governance and validation; repository write skipped for dry run."
+                        if dry_run
+                        else "Source passed governance, validation, and repository persistence."
+                    ),
                 )
             )
             logger.info(
-                "ingestion_saved source={} batch_id={} fetched={} saved={}",
+                "ingestion_{} source={} batch_id={} fetched={} saved={}",
+                "dry_run" if dry_run else "saved",
                 source_key,
                 batch_id,
                 len(stamped_jobs),
                 len(saved_jobs),
             )
 
-        expired_count = self.repository.mark_expired() if mark_expired else 0
+        expired_count = self.repository.mark_expired() if mark_expired and not dry_run else 0
         finished_at = datetime.now(UTC)
         active_jobs_after = len(self.repository.list_job_dicts())
 
         return IngestionBatchSummary(
-            status="completed",
+            status="dry_run" if dry_run else "completed",
             ingestion_batch_id=batch_id,
             sources=[self._provider_key(source) for source in sources],
             keywords=keywords,

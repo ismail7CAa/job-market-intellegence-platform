@@ -136,6 +136,24 @@ make test PYTEST_ARGS='tests/test_data_pipeline.py -q'
 
 Runtime configuration lives in `.env`; use [.env.example](.env.example) as the template.
 
+Admin repository ingestion can also run without the public API route:
+
+```bash
+python -m src.data_pipeline.ingest --source legal_demo_csv --keyword Nurse --limit 25
+python -m src.data_pipeline.ingest --source legal_demo_csv --keyword Nurse --limit 25 --dry-run
+python -m src.data_pipeline.ingest --source legal_demo_csv --keyword Nurse --limit 25 --mark-expired
+```
+
+Database schema changes are controlled by Alembic:
+
+```bash
+alembic upgrade head
+alembic downgrade -1
+alembic revision --autogenerate -m "describe schema change"
+make migrate
+make migration MESSAGE="describe schema change"
+```
+
 ## API Surface
 
 The public FastAPI surface exposes read-only search, market-context, and apply-handoff routes:
@@ -190,6 +208,7 @@ When live-ingested jobs are not loaded yet, the API can fall back to the local s
 - `src/api/services/`: backend service layer for job search, detail, facets, governance, and apply handoff
 - `src/nlp/`: archived natural-language experiments, not part of the public product API
 - `src/database/`: SQLAlchemy models and repository helpers
+- `migrations/`: Alembic database migrations for controlled schema changes
 - `tests/`: pipeline, schema, feature engineering, model regression, analytics, database, and API tests
 - `requirements-runtime.txt`: lean dependency set for the deployed API/dashboard container
 - `airflow/`, `dbt/`, `feast/`: orchestration, transformation, and feature-store scaffolding

@@ -1,4 +1,4 @@
-.PHONY: help install ingest train serve test
+.PHONY: help install ingest train serve test migrate migration
 
 PYTHON ?= python
 PIP ?= $(PYTHON) -m pip
@@ -20,6 +20,8 @@ help:
 	@echo "  make train      Retrain and track the role predictor"
 	@echo "  make serve      Start the FastAPI app"
 	@echo "  make test       Run the test suite"
+	@echo "  make migrate    Apply Alembic migrations"
+	@echo "  make migration MESSAGE='describe change'  Create an Alembic revision"
 	@echo ""
 	@echo "Common overrides:"
 	@echo "  make ingest LIMIT=25 OUTPUT=data/jobs.json"
@@ -42,3 +44,9 @@ serve:
 
 test:
 	$(PYTHON) -m pytest $(PYTEST_ARGS)
+
+migrate:
+	$(PYTHON) -m alembic upgrade head
+
+migration:
+	$(PYTHON) -m alembic revision --autogenerate -m "$(MESSAGE)"
