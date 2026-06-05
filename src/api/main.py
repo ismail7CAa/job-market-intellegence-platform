@@ -24,6 +24,7 @@ from src.api.schemas import (
     ApplyHandoff,
     DataGovernanceResponse,
     EngineWorkflowResponse,
+    EscoNormalizeResponse,
     JobDetailResponse,
     JobSearchResponse,
     SearchFacetsResponse,
@@ -38,6 +39,7 @@ from src.data_pipeline.pipeline import DataPipeline
 from src.data_pipeline.models import JobPosting
 from src.data_pipeline.providers import JobSearchRequest, LocalCsvJobProvider
 from src.data_pipeline.source_policy import evaluate_source, evaluate_sources
+from src.market_context import EscoNormalizer
 from src.prediction.role_predictor import RolePredictor
 
 # Initialize database
@@ -69,6 +71,7 @@ analyzer = SkillDemandAnalyzer()
 pipeline = DataPipeline()
 role_predictor = RolePredictor()
 salary_detector = SalaryAnomalyDetector()
+esco_normalizer = EscoNormalizer()
 TRAINING_DATA_PATH = settings.training_data_path
 PRODUCTION_DATA_PATH = settings.production_data_path
 _job_repository = JobPostingRepository(_db.get_session()) if _db else None
@@ -151,6 +154,7 @@ def _get_loaded_job_dicts() -> list[dict]:
 job_search_service = JobSearchService(
     jobs_loader=_get_loaded_job_dicts,
     repository_provider=_get_job_repository,
+    esco_normalizer=esco_normalizer,
     currency=settings.default_currency,
     region=settings.market_region,
 )
@@ -719,6 +723,14 @@ async def search_jobs(
 async def get_search_facets():
     """Return available filters for the current job index."""
     return job_search_service.build_search_facets()
+
+
+@app.get("/market/esco/normalize", response_model=EscoNormalizeResponse)
+async def normalize_esco_query(
+    q: str = Query(..., min_length=1, description="Occupation, skill, or job-search phrase"),
+):
+    """Normalize a query with ESCO occupation and skill context."""
+    return esco_normalizer.normalize_query(q)
 
 
 @app.get("/jobs/{job_id}", response_model=JobDetailResponse)

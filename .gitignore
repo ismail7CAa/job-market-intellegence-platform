@@ -46,6 +46,8 @@ data/processed/
 *.json
 !data/job_postings_training.csv
 !data/job_postings_production.csv
+!data/market_context/
+!data/market_context/esco_seed_concepts.csv
 data/job_market.db
 
 # Tests

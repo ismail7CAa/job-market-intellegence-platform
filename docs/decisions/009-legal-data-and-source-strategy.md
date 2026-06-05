@@ -82,6 +82,7 @@ Decision impact:
 - ESCO is excellent for normalizing job titles, occupation groups, and skills.
 - ESCO is not a job postings dataset.
 - It should be used to improve search, similar-job ranking, role categories, and skill extraction.
+- The first implementation uses an ESCO-aligned seed vocabulary for the current synthetic corpus and exposes the normalization boundary. Official ESCO concept URIs can be added once the official ESCO export is loaded into the project.
 
 References:
 
@@ -241,29 +242,31 @@ Deferred until provider terms, cost, and coverage are reviewed.
 
 ## Recommended Next Data Improvements
 
-The current committed dataset is intentionally small and should not be presented as real market coverage. Before frontend polish or redeployment, improve the data story in this order:
+The current committed dataset is broader than the first seed, but it is still synthetic and should not be presented as live market coverage. Before frontend polish or redeployment, improve the data story in this order:
 
-1. Expand the legal synthetic German job dataset to 100-300 records.
-2. Cover non-tech roles across healthcare, logistics, retail, finance, sales, HR, construction, hospitality, education, public sector, operations, and engineering.
-3. Add `esco_occupation_uri` and `language_requirements` once ESCO and language extraction are implemented.
-4. Add an ESCO enrichment layer for normalized occupation and skill matching.
-5. Add Eurostat or BA statistics as market-context endpoints, clearly separate from job listings.
-6. Add a provider adapter only after the source terms are confirmed.
+1. Load the official ESCO export and populate `esco_occupation_uri` / skill concept URIs.
+2. Add `language_requirements` once language extraction is implemented.
+3. Add Eurostat or BA statistics as market-context endpoints, clearly separate from job listings.
+4. Add a provider adapter only after the source terms are confirmed.
 
 Completed on 2026-06-05:
 
 - provider-ready listing fields were added to `JobPosting`
 - seed CSVs now include source posting IDs, application URLs, company career URLs, location breakdown, salary metadata, occupation group, experience level, employment type, lifecycle timestamps, and ingestion batch IDs
+- the legal synthetic German seed dataset was expanded to 120 production listings and 120 training listings
+- the seed dataset now covers healthcare, logistics, retail, finance, sales, HR, construction and trades, hospitality, education, operations, engineering, and public sector roles across German cities
 - validation, API schemas, SQLAlchemy model, and database init SQL were aligned with the expanded listing contract
 - repository-backed search was added through `JobPostingRepository`
 - provider results can now be saved, deduplicated by source identity, marked expired, queried by filters or ID, and matched to similar jobs
 - the search service now reads from the repository first instead of treating the CSV pipeline as the primary search index
+- ESCO market-context normalization was added for occupation and skill aliases
+- `/market/esco/normalize` exposes query normalization, and search ranking uses ESCO-expanded terms without treating ESCO as a listing source
 
 ## Source Approval Matrix
 
 | Source | Cost | Legal posture | Individual job listings? | Apply URLs? | Backend use |
 | --- | --- | --- | --- | --- | --- |
-| Local legal demo CSV | Free | Approved for demo | Yes, synthetic/demo | Yes, source links | Current default |
+| Local legal seed CSV | Free | Approved for portfolio seed use | Yes, synthetic seed listings | Yes, source links | Current default |
 | Company career feeds with permission | Free or negotiated | Approved when permission is explicit | Yes | Yes | Future provider |
 | Licensed job provider | Usually paid, possibly free tier | Approved if contract allows | Yes | Usually yes | Future provider |
 | Bundesagentur Jobsuche public portal | Free for users | Use as external link; no confirmed official listings API | Yes in UI | Yes in UI | Link out only |

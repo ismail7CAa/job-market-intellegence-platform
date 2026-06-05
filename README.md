@@ -97,7 +97,7 @@ The backend blocks unapproved live sources through `/data/fetch` and reports sou
 - **Kafka is included as a streaming boundary, not just decoration.** Ingestion validates records before publishing to the `job_postings` topic, and the consumer is responsible for BigQuery loading. The rationale is documented in [docs/decisions/001-why-kafka.md](docs/decisions/001-why-kafka.md).
 - **The public demo uses one EC2 instance rather than managed AWS services.** Docker Compose keeps the FastAPI app and Postgres deployment understandable and low-cost for a portfolio demo. See [docs/decisions/002-why-one-ec2-docker-compose.md](docs/decisions/002-why-one-ec2-docker-compose.md).
 - **Postgres runs as a local container for the first cloud demo.** RDS remains a future production option, but the current path avoids an extra managed database bill. See [docs/decisions/003-why-local-postgres-container.md](docs/decisions/003-why-local-postgres-container.md).
-- **Local legal seed listings are used intentionally.** This keeps search, detail, and apply workflows reproducible while avoiding claims of live market coverage before an approved listing source is connected. See [docs/decisions/004-why-data-for-public-portfolio.md](docs/decisions/004-why-data-for-public-portfolio.md).
+- **Local legal seed listings are used intentionally.** The committed seed data now covers 120 synthetic German production listings plus a matching training set across healthcare, logistics, retail, finance, sales, HR, trades, hospitality, education, operations, engineering, and public sector roles. This keeps search, detail, and apply workflows reproducible while avoiding claims of live market coverage before an approved listing source is connected. See [docs/decisions/004-why-data-for-public-portfolio.md](docs/decisions/004-why-data-for-public-portfolio.md).
 - **Legal data sourcing is explicit.** Individual job listings require approved listing sources, while official open statistics are used only as market context. See [docs/decisions/009-legal-data-and-source-strategy.md](docs/decisions/009-legal-data-and-source-strategy.md).
 - **GitHub Actions and GHCR provide the first CI/CD path.** The EC2 host pulls a built image instead of building from source on the instance. See [docs/decisions/005-why-github-actions-ghcr.md](docs/decisions/005-why-github-actions-ghcr.md).
 - **The demo is focused on Germany.** German roles, cities, and EUR salary ranges make the product story more specific and credible. See [docs/decisions/006-why-german-market-focus.md](docs/decisions/006-why-german-market-focus.md).
@@ -107,6 +107,7 @@ The backend blocks unapproved live sources through `/data/fetch` and reports sou
 - **Job sources plug in through provider adapters.** `JobPostingProvider` adapters accept a provider-neutral search request and return normalized `JobPosting` records, so licensed providers or company feeds can be added without changing the search API, salary intelligence, apply handoff, or dashboard code.
 - **Public job APIs use explicit response schemas.** Pydantic models define the search, detail, facets, similar-jobs, apply, governance, and workflow contracts that FastAPI validates and exposes through OpenAPI.
 - **The job listing contract is provider-ready.** Listings carry source IDs, application and company career URLs, city/state/country fields, occupation group, experience level, employment type, salary period and confidence, lifecycle timestamps, and ingestion batch IDs.
+- **ESCO is used as market-context enrichment, not as listings.** The first ESCO layer normalizes occupation and skill aliases to improve search ranking and expose `/market/esco/normalize`; it does not create job postings or apply links.
 - **Configuration is typed and environment-driven.** `config/settings.py` uses a Pydantic settings model loaded from environment variables and `.env`. Secrets, paths, Kafka settings, German market defaults, MLflow settings, and model hyperparameters are not buried in scripts.
 - **The local path is intentionally reproducible.** `make ingest`, `make train`, `make serve`, and `make test` provide stable developer workflows instead of relying on README command sequencing.
 - **Model tracking is treated as part of the system.** MLflow logs dataset fingerprints, evaluation metrics, reports, confusion matrices, model artifacts, and optional registry versions.
@@ -144,6 +145,7 @@ The FastAPI service exposes:
 - `/jobs/{job_id}`
 - `/jobs/{job_id}/similar`
 - `/jobs/{job_id}/apply`
+- `/market/esco/normalize`
 - `/data/governance`
 - `/engine/workflow`
 - `/data/fetch`

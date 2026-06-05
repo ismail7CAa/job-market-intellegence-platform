@@ -7,6 +7,7 @@ from typing import Callable, TYPE_CHECKING
 from urllib.parse import quote_plus
 
 from src.data_pipeline.source_policy import evaluate_source
+from src.market_context import EscoNormalizer
 
 if TYPE_CHECKING:
     from src.database.repository import JobPostingRepository
@@ -19,11 +20,13 @@ class JobSearchService:
         self,
         jobs_loader: Callable[[], list[dict]] | None = None,
         repository_provider: Callable[[], "JobPostingRepository | None"] | None = None,
+        esco_normalizer: EscoNormalizer | None = None,
         currency: str = "EUR",
         region: str = "Germany",
     ):
         self.jobs_loader = jobs_loader or (lambda: [])
         self.repository_provider = repository_provider
+        self.esco_normalizer = esco_normalizer or EscoNormalizer()
         self.currency = currency
         self.region = region
 
@@ -73,8 +76,19 @@ class JobSearchService:
             job.get("job_type"),
             job.get("remote_status"),
             job.get("required_skills", []),
+            self.esco_normalizer.search_terms_for_job(job),
         ]
         return " ".join(self._normalize_search_text(field) for field in fields).lower()
+
+    def _expanded_query_terms(self, query: str) -> list[str]:
+        """Return query terms expanded with ESCO occupation and skill aliases."""
+        terms = [
+            term.strip().lower()
+            for term in query.split()
+            if term.strip()
+        ]
+        terms.extend(self.esco_normalizer.expand_query_terms(query))
+        return sorted({term for term in terms if term})
 
     @staticmethod
     def infer_apply_url(job: dict) -> str:
@@ -153,11 +167,7 @@ class JobSearchService:
         limit: int = 25,
     ) -> list[dict]:
         """Rank local jobs against a keyword query and optional filters."""
-        query_terms = [
-            term.strip().lower()
-            for term in query.split()
-            if term.strip()
-        ]
+        query_terms = self._expanded_query_terms(query)
         location_filter = location.lower().strip() if location else ""
         work_filter = work_mode.lower().strip() if work_mode else ""
         ranked = []
@@ -242,14 +252,15 @@ class JobSearchService:
             "market_context": self.build_job_market_context(job),
         }
 
-    @staticmethod
-    def _similarity_score(target: dict, candidate: dict) -> int:
+    def _similarity_score(self, target: dict, candidate: dict) -> int:
         """Score how related two jobs are using stable structured fields."""
         if target.get("id") == candidate.get("id"):
             return 0
         score = 0
         if target.get("role_type") and target.get("role_type") == candidate.get("role_type"):
             score += 5
+        if target.get("occupation_group") and target.get("occupation_group") == candidate.get("occupation_group"):
+            score += 4
         if target.get("location") and target.get("location") == candidate.get("location"):
             score += 3
         if target.get("remote_status") and target.get("remote_status") == candidate.get("remote_status"):
@@ -257,6 +268,9 @@ class JobSearchService:
         target_skills = {str(skill).lower() for skill in target.get("required_skills", [])}
         candidate_skills = {str(skill).lower() for skill in candidate.get("required_skills", [])}
         score += len(target_skills & candidate_skills)
+        target_esco = {term.lower() for term in self.esco_normalizer.search_terms_for_job(target)}
+        candidate_esco = {term.lower() for term in self.esco_normalizer.search_terms_for_job(candidate)}
+        score += len(target_esco & candidate_esco)
         return score
 
     def build_similar_jobs(self, job: dict, limit: int = 5) -> dict:
@@ -364,10 +378,10 @@ class JobSearchService:
         repository = self._repository()
         if repository:
             jobs = repository.query_job_dicts(
-                query=query,
+                query="",
                 location=location,
                 work_mode=work_mode,
-                limit=max(limit, 100),
+                limit=max(limit, 1_000),
             )
         else:
             jobs = self._jobs()
@@ -480,8 +494,8 @@ class JobSearchService:
                 },
                 {
                     "step": "Rank matching jobs",
-                    "task": "Match query terms against title, description, company, location, role category, job type, work mode, and skills.",
-                    "current_backend": "JobSearchService.rank_jobs",
+                    "task": "Normalize occupation and skill aliases with ESCO, then match query terms against title, description, company, location, role category, job type, work mode, and skills.",
+                    "current_backend": "EscoNormalizer plus JobSearchService.rank_jobs",
                 },
                 {
                     "step": "Market intelligence",

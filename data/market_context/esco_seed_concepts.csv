@@ -1,0 +1,56 @@
+concept_type,preferred_label,concept_uri,broader_group,aliases
+occupation,Nurse,,Healthcare and Nursing,Nurse;Nursing;Registered Nurse;Care Nurse;Pflegefachkraft
+occupation,Medical Assistant,,Healthcare and Nursing,Medical Assistant;Clinical Assistant;Healthcare Assistant;Praxisassistenz
+occupation,Physiotherapist,,Healthcare and Nursing,Physiotherapist;Physical Therapist;Rehabilitation Specialist;Physiotherapie
+occupation,Elderly Care Specialist,,Healthcare and Nursing,Elderly Care Specialist;Elderly Care;Care Worker;Altenpflege
+occupation,Radiology Technician,,Healthcare and Nursing,Radiology Technician;Radiographer;Imaging Technician;Radiologie
+occupation,Warehouse Worker,,Warehousing and Logistics,Warehouse Worker;Warehouse Operative;Picker Packer;Lagerarbeit
+occupation,Dispatch Coordinator,,Warehousing and Logistics,Dispatch Coordinator;Transport Coordinator;Logistics Coordinator;Disposition
+occupation,Supply Chain Planner,,Warehousing and Logistics,Supply Chain Planner;Demand Planner;Inventory Planner;Supply Chain
+occupation,Forklift Operator,,Warehousing and Logistics,Forklift Operator;Forklift Driver;Warehouse Driver;Staplerfahrer
+occupation,Fleet Operations Manager,,Warehousing and Logistics,Fleet Operations Manager;Fleet Manager;Transport Manager;Fuhrpark
+occupation,Store Manager,,Retail and Customer Service,Store Manager;Retail Manager;Shop Manager;Filialleitung
+occupation,Retail Sales Associate,,Retail and Customer Service,Retail Sales Associate;Sales Assistant;Shop Assistant;Verkauf
+occupation,Customer Service Advisor,,Retail and Customer Service,Customer Service Advisor;Customer Support;Service Advisor;Kundenservice
+occupation,Accountant,,Accounting and Finance,Accountant;Financial Accountant;Accounting Specialist;Buchhaltung
+occupation,Payroll Specialist,,Accounting and Finance,Payroll Specialist;Payroll Clerk;Salary Accounting;Lohnbuchhaltung
+occupation,Financial Controller,,Accounting and Finance,Financial Controller;Controller;Business Controller;Controlling
+occupation,Sales Representative,,Sales and Business Development,Sales Representative;Field Sales;Sales Consultant;Vertrieb
+occupation,Account Manager,,Sales and Business Development,Account Manager;Customer Account Manager;Key Account;Kundenbetreuung
+occupation,Recruiter,,Human Resources,Recruiter;Talent Acquisition Specialist;Hiring Specialist;Personalgewinnung
+occupation,HR Generalist,,Human Resources,HR Generalist;Human Resources Generalist;People Generalist;Personalwesen
+occupation,Electrician,,Construction and Skilled Trades,Electrician;Electrical Installer;Electrical Technician;Elektriker
+occupation,Plumber,,Construction and Skilled Trades,Plumber;Sanitation Technician;Pipefitter;Sanitaer
+occupation,Construction Site Supervisor,,Construction and Skilled Trades,Construction Site Supervisor;Site Manager;Construction Supervisor;Bauleitung
+occupation,Hotel Receptionist,,Hospitality and Food Service,Hotel Receptionist;Front Desk Agent;Receptionist;Rezeption
+occupation,Chef de Partie,,Hospitality and Food Service,Chef de Partie;Cook;Line Cook;Koch
+occupation,Restaurant Manager,,Hospitality and Food Service,Restaurant Manager;Hospitality Manager;Food Service Manager;Gastronomie
+occupation,Primary School Teacher,,Education and Training,Primary School Teacher;Teacher;Educator;Lehrkraft
+occupation,Early Childhood Educator,,Education and Training,Early Childhood Educator;Childcare Educator;Kindergarten Teacher;Erzieher
+occupation,Vocational Trainer,,Education and Training,Vocational Trainer;Trainer;Instructor;Ausbilder
+occupation,Operations Coordinator,,Business Operations,Operations Coordinator;Business Operations Coordinator;Operations Specialist;Betriebskoordination
+occupation,Office Manager,,Business Operations,Office Manager;Administrative Manager;Office Coordinator;Bueromanagement
+occupation,Procurement Specialist,,Business Operations,Procurement Specialist;Buyer;Purchasing Specialist;Einkauf
+occupation,Mechanical Engineer,,Engineering and Technical Services,Mechanical Engineer;Design Engineer;Mechanical Design;Maschinenbau
+occupation,Electrical Engineer,,Engineering and Technical Services,Electrical Engineer;Electronics Engineer;Power Systems Engineer;Elektrotechnik
+occupation,Quality Engineer,,Engineering and Technical Services,Quality Engineer;QA Engineer;Quality Specialist;Qualitaetssicherung
+occupation,Administrative Officer,,Public Administration,Administrative Officer;Public Administrator;Case Officer;Sachbearbeitung
+occupation,Policy Analyst,,Public Administration,Policy Analyst;Public Policy Analyst;Research Officer;Politikanalyse
+occupation,Social Services Caseworker,,Public Administration,Social Services Caseworker;Caseworker;Social Worker;Sozialdienst
+skill,Patient Care,,Healthcare and Nursing,Patient Care;Patient Support;Clinical Care;Patientenbetreuung
+skill,Documentation,,Cross-functional,Documentation;Record Keeping;Case Notes;Dokumentation
+skill,Forklift,,Warehousing and Logistics,Forklift;Forklift License;Forklift Driving;Staplerschein;Staplerfahrer
+skill,Inventory,,Warehousing and Logistics,Inventory;Stock Control;Warehouse Stock;Bestand
+skill,Customer Service,,Retail and Customer Service,Customer Service;Customer Support;Client Service;Kundenservice
+skill,CRM,,Sales and Business Development,CRM;Customer Relationship Management;Salesforce;HubSpot
+skill,DATEV,,Accounting and Finance,DATEV;Accounting Software;Tax Software
+skill,Excel,,Cross-functional,Excel;Spreadsheets;Microsoft Excel;Tabellenkalkulation
+skill,Recruiting,,Human Resources,Recruiting;Talent Acquisition;Sourcing;Personalgewinnung
+skill,German Labor Law,,Human Resources,German Labor Law;Labor Law;Employment Law;Arbeitsrecht
+skill,Electrical Installation,,Construction and Skilled Trades,Electrical Installation;Electrical Wiring;Installation;Elektroinstallation
+skill,Food Safety,,Hospitality and Food Service,Food Safety;Hygiene;HACCP;Lebensmittelsicherheit
+skill,Teaching,,Education and Training,Teaching;Instruction;Education;Unterricht
+skill,Procurement,,Business Operations,Procurement;Purchasing;Sourcing;Einkauf
+skill,CAD,,Engineering and Technical Services,CAD;Computer Aided Design;AutoCAD;Konstruktion
+skill,Quality Management,,Engineering and Technical Services,Quality Management;QA;ISO 9001;Qualitaetsmanagement
+skill,Case Management,,Public Administration,Case Management;Casework;Public Cases;Fallmanagement

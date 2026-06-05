@@ -224,12 +224,9 @@ Negative consequences:
 
 Recommended next steps:
 
-1. Expand the local legal seed listing set to 100-300 records across German professions.
-2. Add `esco_occupation_uri` once ESCO enrichment is implemented.
-3. Add ESCO enrichment for occupations and skills.
-4. Add Eurostat or BA statistics adapters for market context.
-5. Add a repository layer for persisted search and deduplication.
-6. Add a live listing provider only after source terms are confirmed.
+1. Load the official ESCO export and populate `esco_occupation_uri` / skill concept URIs.
+2. Add Eurostat or BA statistics adapters for market context.
+3. Add a live listing provider only after source terms are confirmed.
 
 Completed on 2026-06-05:
 
@@ -237,6 +234,9 @@ Completed on 2026-06-05:
 - added salary period, salary-estimation, and salary-confidence fields
 - added city, federal state, country, occupation group, experience level, employment type, lifecycle timestamps, application URL, company career URL, source posting ID, and ingestion batch ID
 - aligned the local seed CSVs, Pandera validation, API response schemas, SQLAlchemy model, and database init SQL with those fields
+- expanded the local legal seed data to 120 synthetic production listings and 120 synthetic training listings
+- covered healthcare, logistics, retail, finance, sales, human resources, construction and trades, hospitality, education, operations, engineering, and public sector roles across German cities
+- added ESCO-aligned occupation and skill normalization as market-context enrichment for search
 
 ## Relationship to ADR 009
 

@@ -154,8 +154,8 @@ class TestJobProviders:
             limit_per_source=5,
         )
 
-        assert len(jobs) == 1
-        assert jobs[0].title == "Accountant"
+        assert len(jobs) == 2
+        assert {job.title for job in jobs} == {"Accountant"}
         assert pipeline.processing_log[0]["source"] == "legal_demo_csv"
         assert "legal_basis" in pipeline.processing_log[0]
 

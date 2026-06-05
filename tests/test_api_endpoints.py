@@ -54,10 +54,30 @@ class TestApiEndpoints:
         assert response.status_code == 200
         payload = response.json()
         assert payload["status"] == "ready"
-        assert payload["total_jobs"] > 0
-        assert {"value": "Berlin, Germany", "count": 3} in payload["locations"]
-        assert {"value": "Healthcare", "count": 1} in payload["role_types"]
+        assert payload["total_jobs"] >= 120
+        assert {"value": "Berlin, Germany", "count": 10} in payload["locations"]
+        assert {"value": "Healthcare", "count": 10} in payload["role_types"]
+        assert {"value": "Public Sector", "count": 10} in payload["role_types"]
         assert payload["salary_range"]["currency"] == "EUR"
+
+    def test_job_search_uses_esco_query_expansion(self):
+        """Search should understand ESCO occupation aliases."""
+        response = client.get("/jobs/search", params={"q": "nursing", "location": "Berlin"})
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["count"] >= 1
+        assert payload["jobs"][0]["title"] == "Nurse"
+
+    def test_esco_normalize_endpoint_returns_market_context(self):
+        """ESCO normalization should be exposed as market context, not listings."""
+        response = client.get("/market/esco/normalize", params={"q": "Buchhaltung"})
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["source_use"] == "market_context_enrichment"
+        assert payload["occupations"][0]["preferred_label"] == "Accountant"
+        assert "accountant" in payload["expanded_terms"]
 
     def test_job_detail_endpoint_returns_application_and_market_context(self):
         """Job detail should provide everything needed for a result detail page."""

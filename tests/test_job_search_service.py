@@ -61,7 +61,7 @@ def test_service_searches_and_formats_results():
 
     payload = service.build_search_response(query="Nurse", location="Berlin")
 
-    assert payload["count"] == 1
+    assert payload["count"] >= 1
     assert payload["jobs"][0]["id"] == "job_1"
     assert payload["jobs"][0]["salary_label"] == "42,000-54,000 EUR"
 

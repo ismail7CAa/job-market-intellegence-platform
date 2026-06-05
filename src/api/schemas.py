@@ -225,3 +225,24 @@ class EngineWorkflowResponse(ApiModel):
     status: Literal["ready"]
     workflow: list[EngineWorkflowStep]
     next_backend_increment: str
+
+
+class EscoConceptResponse(ApiModel):
+    """Normalized ESCO occupation or skill concept."""
+
+    concept_type: Literal["occupation", "skill"]
+    preferred_label: str
+    concept_uri: str | None = None
+    broader_group: str | None = None
+    aliases: list[str]
+
+
+class EscoNormalizeResponse(ApiModel):
+    """Response contract for ESCO query normalization."""
+
+    query: str
+    source: str
+    source_use: Literal["market_context_enrichment"]
+    occupations: list[EscoConceptResponse]
+    skills: list[EscoConceptResponse]
+    expanded_terms: list[str]
