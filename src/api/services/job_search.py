@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+import math
 from typing import Callable, TYPE_CHECKING
 from urllib.parse import quote_plus
 
@@ -15,6 +16,16 @@ if TYPE_CHECKING:
 
 class JobSearchService:
     """Coordinate job search behavior over a normalized job index."""
+
+    ALLOWED_SORTS = {
+        "relevance",
+        "salary_desc",
+        "salary_asc",
+        "posted_desc",
+        "posted_asc",
+        "company",
+        "title",
+    }
 
     def __init__(
         self,
@@ -91,6 +102,115 @@ class JobSearchService:
         return sorted({term for term in terms if term})
 
     @staticmethod
+    def _contains(value: object, term: str) -> bool:
+        """Return whether a normalized term is contained in a value."""
+        if value is None:
+            return False
+        if isinstance(value, list):
+            return any(term in str(item).lower() for item in value)
+        return term in str(value).lower()
+
+    def _salary_matches(
+        self,
+        job: dict,
+        salary_min: float | None = None,
+        salary_max: float | None = None,
+    ) -> bool:
+        """Return whether a job salary overlaps the requested salary range."""
+        midpoint = self.salary_midpoint(job)
+        if midpoint is None:
+            return salary_min is None and salary_max is None
+        if salary_min is not None and midpoint < salary_min:
+            return False
+        if salary_max is not None and midpoint > salary_max:
+            return False
+        return True
+
+    def _filter_job(
+        self,
+        job: dict,
+        location: str | None = None,
+        work_mode: str | None = None,
+        company: str | None = None,
+        role_type: str | None = None,
+        salary_min: float | None = None,
+        salary_max: float | None = None,
+        employment_type: str | None = None,
+    ) -> bool:
+        """Apply structured search filters to one job."""
+        if location and location.lower().strip() not in str(job.get("location", "")).lower():
+            return False
+        if work_mode and work_mode.lower().strip() != "any":
+            if work_mode.lower().strip() != str(job.get("remote_status", "")).lower():
+                return False
+        if company and company.lower().strip() not in str(job.get("company", "")).lower():
+            return False
+        if role_type and role_type.lower().strip() not in str(job.get("role_type", "")).lower():
+            return False
+        if employment_type and employment_type.lower().strip() not in str(job.get("employment_type", "")).lower():
+            return False
+        return self._salary_matches(job, salary_min=salary_min, salary_max=salary_max)
+
+    def _score_job(self, job: dict, query_terms: list[str]) -> tuple[float, list[str]]:
+        """Score one job and explain why it matched."""
+        if not query_terms:
+            return 1.0, ["No keyword query; included by active listing filters."]
+
+        score = 0.0
+        reasons: list[str] = []
+        title = str(job.get("title", "")).lower()
+        company = str(job.get("company", "")).lower()
+        role_type = str(job.get("role_type", "")).lower()
+        occupation_group = str(job.get("occupation_group", "")).lower()
+        description = str(job.get("description", "")).lower()
+        skill_text = " ".join(str(skill) for skill in job.get("required_skills", [])).lower()
+        esco_terms = " ".join(self.esco_normalizer.search_terms_for_job(job)).lower()
+
+        for term in query_terms:
+            term_score = 0.0
+            if term in title:
+                term_score += 8
+            if term in role_type or term in occupation_group:
+                term_score += 5
+            if term in skill_text:
+                term_score += 4
+            if term in esco_terms:
+                term_score += 3
+            if term in company:
+                term_score += 2
+            if term in description:
+                term_score += 1
+
+            if term_score:
+                score += term_score
+                if term in title and "title match" not in reasons:
+                    reasons.append("title match")
+                elif (term in role_type or term in occupation_group) and "occupation match" not in reasons:
+                    reasons.append("occupation match")
+                elif term in skill_text and "skill match" not in reasons:
+                    reasons.append("skill match")
+                elif term in esco_terms and "ESCO synonym match" not in reasons:
+                    reasons.append("ESCO synonym match")
+                elif term in company and "company match" not in reasons:
+                    reasons.append("company match")
+                elif term in description and "description match" not in reasons:
+                    reasons.append("description match")
+
+        return score, reasons
+
+    @staticmethod
+    def _sort_value(job: dict, sort: str) -> object:
+        if sort in {"salary_desc", "salary_asc"}:
+            return job.get("salary_midpoint") if job.get("salary_midpoint") is not None else -1
+        if sort in {"posted_desc", "posted_asc"}:
+            return str(job.get("posted_date") or "")
+        if sort == "company":
+            return str(job.get("company") or "")
+        if sort == "title":
+            return str(job.get("title") or "")
+        return job.get("relevance_score") or 0
+
+    @staticmethod
     def infer_apply_url(job: dict) -> str:
         """Return a direct apply/source URL when one is available."""
         if job.get("application_url"):
@@ -164,34 +284,54 @@ class JobSearchService:
         query: str,
         location: str | None = None,
         work_mode: str | None = None,
+        company: str | None = None,
+        role_type: str | None = None,
+        salary_min: float | None = None,
+        salary_max: float | None = None,
+        employment_type: str | None = None,
+        sort: str = "relevance",
         limit: int = 25,
+        offset: int = 0,
     ) -> list[dict]:
         """Rank local jobs against a keyword query and optional filters."""
         query_terms = self._expanded_query_terms(query)
-        location_filter = location.lower().strip() if location else ""
-        work_filter = work_mode.lower().strip() if work_mode else ""
-        ranked = []
+        ranked: list[dict] = []
 
         for job in jobs:
-            blob = self._job_search_blob(job)
-            if location_filter and location_filter not in str(job.get("location", "")).lower():
+            if not self._filter_job(
+                job,
+                location=location,
+                work_mode=work_mode,
+                company=company,
+                role_type=role_type,
+                salary_min=salary_min,
+                salary_max=salary_max,
+                employment_type=employment_type,
+            ):
                 continue
-            if work_filter and work_filter != "any":
-                if work_filter != str(job.get("remote_status", "")).lower():
-                    continue
 
-            if query_terms:
-                score = sum(3 if term in str(job.get("title", "")).lower() else 0 for term in query_terms)
-                score += sum(1 for term in query_terms if term in blob)
-                if score == 0:
-                    continue
-            else:
-                score = 1
+            score, reasons = self._score_job(job, query_terms)
+            if query_terms and score == 0:
+                continue
 
-            ranked.append((score, job))
+            ranked_job = {
+                **job,
+                "relevance_score": round(score, 2),
+                "match_reasons": reasons,
+                **self.format_salary(job),
+            }
+            ranked.append(ranked_job)
 
-        ranked.sort(key=lambda item: (-item[0], str(item[1].get("posted_date", "")), item[1].get("title", "")))
-        return [job for _, job in ranked[:limit]]
+        reverse = sort in {"relevance", "salary_desc", "posted_desc"}
+        ranked.sort(
+            key=lambda job: (
+                self._sort_value(job, sort),
+                str(job.get("posted_date") or ""),
+                str(job.get("title") or ""),
+            ),
+            reverse=reverse,
+        )
+        return ranked[offset: offset + limit]
 
     def build_job_result(self, job: dict) -> dict:
         """Project a loaded job into the public search-result contract."""
@@ -226,6 +366,8 @@ class JobSearchService:
             "expires_at": job.get("expires_at"),
             "last_seen_at": job.get("last_seen_at"),
             "is_expired": job.get("is_expired", False),
+            "relevance_score": job.get("relevance_score"),
+            "match_reasons": job.get("match_reasons", []),
             **salary,
         }
 
@@ -372,35 +514,78 @@ class JobSearchService:
         query: str = "",
         location: str | None = None,
         work_mode: str | None = None,
-        limit: int = 25,
+        limit: int | None = None,
+        page: int = 1,
+        per_page: int | None = None,
+        sort: str = "relevance",
+        company: str | None = None,
+        role_type: str | None = None,
+        salary_min: float | None = None,
+        salary_max: float | None = None,
+        employment_type: str | None = None,
     ) -> dict:
         """Search loaded German job data and summarize the result set."""
+        per_page = per_page or limit or 25
+        page = max(page, 1)
+        sort = sort if sort in self.ALLOWED_SORTS else "relevance"
+        offset = (page - 1) * per_page
         repository = self._repository()
         if repository:
             jobs = repository.query_job_dicts(
                 query="",
                 location=location,
                 work_mode=work_mode,
-                limit=max(limit, 1_000),
+                company=company,
+                role_type=role_type,
+                employment_type=employment_type,
+                limit=max(per_page, 1_000),
             )
         else:
             jobs = self._jobs()
-        matches = self.rank_jobs(jobs, query=query, location=location, work_mode=work_mode, limit=limit)
+        ranked_matches = self.rank_jobs(
+            jobs,
+            query=query,
+            location=location,
+            work_mode=work_mode,
+            company=company,
+            role_type=role_type,
+            salary_min=salary_min,
+            salary_max=salary_max,
+            employment_type=employment_type,
+            sort=sort,
+            limit=len(jobs) or per_page,
+            offset=0,
+        )
+        matches = ranked_matches[offset: offset + per_page]
         result_jobs = [self.build_job_result(job) for job in matches]
+        all_result_jobs = [self.build_job_result(job) for job in ranked_matches]
         salaries = [
             job["salary_midpoint"]
-            for job in result_jobs
+            for job in all_result_jobs
             if job["salary_midpoint"] is not None
         ]
-        companies = Counter(job["company"] for job in result_jobs if job.get("company"))
-        locations = Counter(job["location"] for job in result_jobs if job.get("location"))
-        role_types = Counter(job["role_type"] for job in result_jobs if job.get("role_type"))
+        companies = Counter(job["company"] for job in all_result_jobs if job.get("company"))
+        locations = Counter(job["location"] for job in all_result_jobs if job.get("location"))
+        role_types = Counter(job["role_type"] for job in all_result_jobs if job.get("role_type"))
+        total = len(ranked_matches)
 
         return {
             "query": query,
             "location": location,
             "work_mode": work_mode or "any",
+            "sort": sort,
             "count": len(result_jobs),
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": math.ceil(total / per_page) if total else 0,
+            "filters": {
+                "company": company,
+                "role_type": role_type,
+                "salary_min": salary_min,
+                "salary_max": salary_max,
+                "employment_type": employment_type,
+            },
             "jobs": result_jobs,
             "summary": {
                 "average_salary": round(sum(salaries) / len(salaries), 2) if salaries else None,
@@ -408,7 +593,7 @@ class JobSearchService:
                 "top_companies": self._counter_rows(companies, limit=5),
                 "top_locations": self._counter_rows(locations, limit=5),
                 "role_types": self._counter_rows(role_types, limit=5),
-                "apply_links_available": sum(1 for job in result_jobs if job.get("apply_url")),
+                "apply_links_available": sum(1 for job in all_result_jobs if job.get("apply_url")),
             },
             "data_governance": {
                 "region": self.region,

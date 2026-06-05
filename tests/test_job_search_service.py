@@ -64,6 +64,28 @@ def test_service_searches_and_formats_results():
     assert payload["count"] >= 1
     assert payload["jobs"][0]["id"] == "job_1"
     assert payload["jobs"][0]["salary_label"] == "42,000-54,000 EUR"
+    assert payload["jobs"][0]["relevance_score"] > 0
+    assert "title match" in payload["jobs"][0]["match_reasons"]
+
+
+def test_service_filters_sorts_and_paginates_results():
+    service = JobSearchService(jobs_loader=_jobs)
+
+    payload = service.build_search_response(
+        query="",
+        role_type="Healthcare",
+        salary_min=30000,
+        salary_max=60000,
+        sort="salary_desc",
+        page=1,
+        per_page=1,
+    )
+
+    assert payload["total"] == 2
+    assert payload["count"] == 1
+    assert payload["total_pages"] == 2
+    assert payload["jobs"][0]["id"] == "job_1"
+    assert payload["filters"]["role_type"] == "Healthcare"
 
 
 def test_service_builds_detail_with_apply_handoff():

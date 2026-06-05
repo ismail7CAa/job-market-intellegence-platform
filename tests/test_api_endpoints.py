@@ -46,6 +46,46 @@ class TestApiEndpoints:
         assert payload["jobs"][0]["salary_confidence"] == 1.0
         assert payload["data_governance"]["region"] == "Germany"
         assert "licensed" in payload["data_governance"]["legal_position"]
+        assert payload["page"] == 1
+        assert payload["per_page"] == 25
+        assert payload["total"] >= payload["count"]
+        assert payload["sort"] == "relevance"
+        assert payload["jobs"][0]["relevance_score"] > 0
+        assert payload["jobs"][0]["match_reasons"]
+
+    def test_job_search_supports_filters_pagination_and_sorting(self):
+        """Search should behave like a real filtered, paginated engine."""
+        response = client.get(
+            "/jobs/search",
+            params={
+                "role_type": "Finance",
+                "employment_type": "permanent",
+                "salary_min": 50000,
+                "salary_max": 80000,
+                "sort": "salary_desc",
+                "page": 1,
+                "per_page": 3,
+            },
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["count"] == 3
+        assert payload["total"] >= 3
+        assert payload["total_pages"] >= 1
+        assert payload["filters"]["role_type"] == "Finance"
+        assert payload["filters"]["employment_type"] == "permanent"
+        assert payload["jobs"][0]["salary_midpoint"] >= payload["jobs"][1]["salary_midpoint"]
+        assert all(job["role_type"] == "Finance" for job in payload["jobs"])
+
+    def test_job_search_supports_company_filter(self):
+        """Company filter should narrow search results."""
+        response = client.get("/jobs/search", params={"company": "Mittelstand Finance", "per_page": 10})
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["total"] >= 1
+        assert all("Mittelstand Finance" in job["company"] for job in payload["jobs"])
 
     def test_search_facets_endpoint_returns_filter_values(self):
         """Facets endpoint should expose filters for the results UI."""
@@ -165,6 +205,7 @@ class TestApiEndpoints:
             ["application/json"]["schema"]["$ref"]
             == "#/components/schemas/JobSearchResponse"
         )
+        assert "SearchFilters" in payload["components"]["schemas"]
 
     def test_salary_anomalies_endpoint(self):
         """Salary anomaly endpoint should return a stable response shape."""

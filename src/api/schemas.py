@@ -63,6 +63,8 @@ class JobResult(SalaryFields):
     expires_at: datetime | str | None = None
     last_seen_at: datetime | str | None = None
     is_expired: bool = False
+    relevance_score: float | None = None
+    match_reasons: list[str] = Field(default_factory=list)
 
 
 class SearchSummary(ApiModel):
@@ -91,10 +93,26 @@ class JobSearchResponse(ApiModel):
     query: str
     location: str | None = None
     work_mode: str
+    sort: str
     count: int
+    total: int
+    page: int
+    per_page: int
+    total_pages: int
+    filters: "SearchFilters"
     jobs: list[JobResult]
     summary: SearchSummary
     data_governance: SearchGovernance
+
+
+class SearchFilters(ApiModel):
+    """Applied filters for /jobs/search."""
+
+    company: str | None = None
+    role_type: str | None = None
+    salary_min: float | None = None
+    salary_max: float | None = None
+    employment_type: str | None = None
 
 
 class SalaryDetail(ApiModel):

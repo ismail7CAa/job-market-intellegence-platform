@@ -708,14 +708,32 @@ async def search_jobs(
     q: str = Query("", description="Job title, keyword, company, skill, or profession"),
     location: str | None = Query(None, description="German city or region filter"),
     work_mode: str | None = Query(None, description="remote, hybrid, onsite, or any"),
-    limit: int = Query(25, ge=1, le=100),
+    company: str | None = Query(None, description="Company-name filter"),
+    role_type: str | None = Query(None, description="Role category filter"),
+    salary_min: float | None = Query(None, ge=0, description="Minimum salary midpoint filter"),
+    salary_max: float | None = Query(None, ge=0, description="Maximum salary midpoint filter"),
+    employment_type: str | None = Query(None, description="Employment type filter"),
+    sort: str = Query(
+        "relevance",
+        description="Sort by relevance, salary_desc, salary_asc, posted_desc, posted_asc, company, or title",
+    ),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(25, ge=1, le=100),
+    limit: int | None = Query(None, ge=1, le=100, description="Deprecated alias for per_page"),
 ):
     """Search Germany-focused job data with salary, company, and apply-link context."""
     return job_search_service.build_search_response(
         query=q,
         location=location,
         work_mode=work_mode,
-        limit=limit,
+        company=company,
+        role_type=role_type,
+        salary_min=salary_min,
+        salary_max=salary_max,
+        employment_type=employment_type,
+        sort=sort,
+        page=page,
+        per_page=limit or per_page,
     )
 
 

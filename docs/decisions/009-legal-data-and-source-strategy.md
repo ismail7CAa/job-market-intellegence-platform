@@ -261,6 +261,8 @@ Completed on 2026-06-05:
 - the search service now reads from the repository first instead of treating the CSV pipeline as the primary search index
 - ESCO market-context normalization was added for occupation and skill aliases
 - `/market/esco/normalize` exposes query normalization, and search ranking uses ESCO-expanded terms without treating ESCO as a listing source
+- `/jobs/search` now supports pagination, sorting, company filters, role-type filters, salary range filters, employment-type filters, relevance scores, and match reasons
+- search matching now combines direct text matches, normalized occupation matches, skill matches, and ESCO-backed German-English synonym matches
 
 ## Source Approval Matrix
 
