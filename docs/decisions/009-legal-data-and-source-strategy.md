@@ -140,6 +140,79 @@ The backend was changed to enforce this strategy:
 - Public job APIs now use explicit Pydantic response schemas.
 - The public AI-agent endpoints were removed because they did not support the core job-search/apply workflow.
 
+## Problems Found During Backend Hardening
+
+Several implementation problems appeared once the platform goal became a real job-search and apply engine instead of a dashboard:
+
+### 1. Search was coupled to CSV memory
+
+The search service still read serialized jobs from the in-memory pipeline. That was acceptable for a small local dashboard, but it was not a good backend boundary for provider data.
+
+Problems:
+
+- provider results could not be persisted independently of the CSV fallback
+- duplicate listings from repeated ingestion batches were hard to prevent
+- job detail, similar jobs, facets, and apply handoff all depended on process memory
+- a restart could change behavior depending on whether the CSV had already been loaded
+
+Decision:
+
+- Add `JobPostingRepository` as the storage and query boundary.
+- Keep the legal CSV as a fallback seed source, but ingest it through the same repository path used by future providers.
+- Make the search service read from the repository first, with the in-memory loader kept only as a fallback for tests and non-database modes.
+
+### 2. Provider identity was missing from persistence
+
+Real job providers usually expose a stable provider-side posting ID. Without storing that identity, the platform would have to guess whether two records were the same job.
+
+Problems:
+
+- repeated provider pulls could create duplicate jobs
+- source updates could not cleanly overwrite existing records
+- apply links and salary fields could drift across ingestion batches
+
+Decision:
+
+- Store `source_posting_id`.
+- Deduplicate by `source + source_posting_id`.
+- Keep the platform `id` as the internal API identifier.
+
+### 3. Expired listings needed explicit state
+
+`expires_at` alone tells us when a job should no longer appear, but user-facing queries need a simple active/expired filter.
+
+Problems:
+
+- every query would need to recalculate expiry rules
+- expired jobs could accidentally remain visible in search results
+- detail lookup and similar-job lookup needed the same active-listing rule
+
+Decision:
+
+- Add `is_expired`.
+- Add repository-level `mark_expired`.
+- Exclude expired jobs from default search, detail, facets, and similar-job queries.
+- Do not auto-expire the local seed dataset on app startup, because the portfolio seed has fixed historical dates and would otherwise disappear during demos. Live provider refresh jobs can call `mark_expired` after each ingestion run.
+
+### 4. Similar jobs needed persisted matching signals
+
+The existing similarity logic used role type, location, remote status, and required skills. The SQL model did not persist `required_skills`, so moving search into the repository would have dropped an important matching signal.
+
+Decision:
+
+- Persist `required_skills` as compact JSON text for the repository stage.
+- Keep a future normalized `job_skills` relation available for deeper analytics and ESCO enrichment.
+
+### 5. Local SQLite schemas drifted from the SQLAlchemy model
+
+Existing developer SQLite databases are not automatically changed by `create_all` when new columns are added. After adding provider-ready fields, older local databases could crash with missing-column errors.
+
+Decision:
+
+- Add a small SQLite compatibility shim that adds missing job-posting columns for local development.
+- Keep PostgreSQL bootstrap schema in `database/init.sql` aligned with the SQLAlchemy model.
+- Treat this as a development convenience, not a replacement for proper migrations once production persistence is introduced.
+
 ## Why We Did Not Choose Other Solutions
 
 ### Not unapproved scraping
@@ -172,28 +245,19 @@ The current committed dataset is intentionally small and should not be presented
 
 1. Expand the legal synthetic German job dataset to 100-300 records.
 2. Cover non-tech roles across healthcare, logistics, retail, finance, sales, HR, construction, hospitality, education, public sector, operations, and engineering.
-3. Add richer fields to `JobPosting`:
-   - `source_posting_id`
-   - `application_url`
-   - `company_career_url`
-   - `country`
-   - `city`
-   - `federal_state`
-   - `occupation_group`
-   - `esco_occupation_uri`
-   - `experience_level`
-   - `employment_type`
-   - `language_requirements`
-   - `salary_period`
-   - `salary_is_estimated`
-   - `salary_confidence`
-   - `posted_at`
-   - `expires_at`
-   - `last_seen_at`
-   - `ingestion_batch_id`
+3. Add `esco_occupation_uri` and `language_requirements` once ESCO and language extraction are implemented.
 4. Add an ESCO enrichment layer for normalized occupation and skill matching.
 5. Add Eurostat or BA statistics as market-context endpoints, clearly separate from job listings.
 6. Add a provider adapter only after the source terms are confirmed.
+
+Completed on 2026-06-05:
+
+- provider-ready listing fields were added to `JobPosting`
+- seed CSVs now include source posting IDs, application URLs, company career URLs, location breakdown, salary metadata, occupation group, experience level, employment type, lifecycle timestamps, and ingestion batch IDs
+- validation, API schemas, SQLAlchemy model, and database init SQL were aligned with the expanded listing contract
+- repository-backed search was added through `JobPostingRepository`
+- provider results can now be saved, deduplicated by source identity, marked expired, queried by filters or ID, and matched to similar jobs
+- the search service now reads from the repository first instead of treating the CSV pipeline as the primary search index
 
 ## Source Approval Matrix
 

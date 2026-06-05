@@ -225,25 +225,18 @@ Negative consequences:
 Recommended next steps:
 
 1. Expand the local legal seed listing set to 100-300 records across German professions.
-2. Add fields needed for real providers:
-   - `source_posting_id`
-   - `application_url`
-   - `company_career_url`
-   - `city`
-   - `federal_state`
-   - `occupation_group`
-   - `esco_occupation_uri`
-   - `experience_level`
-   - `salary_period`
-   - `salary_is_estimated`
-   - `salary_confidence`
-   - `posted_at`
-   - `expires_at`
-   - `last_seen_at`
-   - `ingestion_batch_id`
+2. Add `esco_occupation_uri` once ESCO enrichment is implemented.
 3. Add ESCO enrichment for occupations and skills.
 4. Add Eurostat or BA statistics adapters for market context.
-5. Add a live listing provider only after source terms are confirmed.
+5. Add a repository layer for persisted search and deduplication.
+6. Add a live listing provider only after source terms are confirmed.
+
+Completed on 2026-06-05:
+
+- added provider-ready listing fields to `JobPosting`
+- added salary period, salary-estimation, and salary-confidence fields
+- added city, federal state, country, occupation group, experience level, employment type, lifecycle timestamps, application URL, company career URL, source posting ID, and ingestion batch ID
+- aligned the local seed CSVs, Pandera validation, API response schemas, SQLAlchemy model, and database init SQL with those fields
 
 ## Relationship to ADR 009
 
