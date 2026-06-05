@@ -1,5 +1,5 @@
 concept_type,preferred_label,concept_uri,broader_group,aliases
-occupation,Nurse,,Healthcare and Nursing,Nurse;Nursing;Registered Nurse;Care Nurse;Pflegefachkraft
+occupation,Nurse,,Healthcare and Nursing,Nurse;Nursing;Registered Nurse;Care Nurse;Pflege;Pflegefachkraft
 occupation,Medical Assistant,,Healthcare and Nursing,Medical Assistant;Clinical Assistant;Healthcare Assistant;Praxisassistenz
 occupation,Physiotherapist,,Healthcare and Nursing,Physiotherapist;Physical Therapist;Rehabilitation Specialist;Physiotherapie
 occupation,Elderly Care Specialist,,Healthcare and Nursing,Elderly Care Specialist;Elderly Care;Care Worker;Altenpflege

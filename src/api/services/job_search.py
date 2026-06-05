@@ -351,8 +351,8 @@ class JobSearchService:
         normalized_query = query.strip().lower()
         if normalized_query and normalized_query in str(job.get("title", "")).lower():
             score += 20
-            if "title match" not in reasons:
-                reasons.insert(0, "title match")
+            reasons = [reason for reason in reasons if reason != "title match"]
+            reasons.insert(0, "title match")
         return score, reasons
 
     @staticmethod
