@@ -77,7 +77,7 @@ class AppSettings(BaseSettings):
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
 
     default_sources: List[str] = Field(
-        default_factory=lambda: ["linkedin", "kaggle"],
+        default_factory=lambda: ["legal_demo_csv"],
         validation_alias="DEFAULT_SOURCES",
     )
     default_keywords: List[str] = Field(

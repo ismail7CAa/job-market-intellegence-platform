@@ -12,6 +12,13 @@ from kafka import KafkaProducer
 
 from config.settings import get_settings
 from .models import JobPosting
+from .providers import (
+    JobPostingProvider,
+    JobSearchRequest,
+    KaggleJobProvider,
+    LinkedInJobProvider,
+    LocalCsvJobProvider,
+)
 from .scraper import LinkedInScraper, KaggleDataLoader
 from .validation import validate_job_postings
 
@@ -21,12 +28,26 @@ logger = logging.getLogger(__name__)
 class DataPipeline:
     """Orchestrates data collection from multiple sources."""
 
-    def __init__(self, kafka_bootstrap_servers: str = None):
+    def __init__(
+        self,
+        kafka_bootstrap_servers: str = None,
+        providers: Dict[str, JobPostingProvider] | None = None,
+    ):
         """Initialize the data pipeline."""
         settings = get_settings()
         self.jobs: List[JobPosting] = []
         self.linkedin_scraper = LinkedInScraper()
         self.kaggle_loader = KaggleDataLoader()
+        self.providers = providers or {
+            "linkedin": LinkedInJobProvider(self.linkedin_scraper),
+            "kaggle": KaggleJobProvider(self.kaggle_loader),
+            "legal_demo_csv": LocalCsvJobProvider(settings.production_data_path),
+            "local_csv": LocalCsvJobProvider(
+                settings.production_data_path,
+                source_id="local_csv",
+                legal_basis="Local legal demo data for development.",
+            ),
+        }
         self.processing_log = []
         self.kafka_bootstrap_servers = (
             kafka_bootstrap_servers
@@ -80,12 +101,9 @@ class DataPipeline:
         start_time = datetime.now()
 
         try:
-            # Fetch from each source and send to Kafka
+            request = JobSearchRequest(keywords=keywords, limit=limit_per_source)
             for source in sources:
-                if source.lower() == "linkedin":
-                    self._fetch_from_linkedin(keywords, limit_per_source)
-                elif source.lower() == "kaggle":
-                    self._fetch_from_kaggle(limit_per_source)
+                self._fetch_from_provider(source, request)
 
             validate_job_postings(self.jobs)
 
@@ -99,6 +117,10 @@ class DataPipeline:
         except Exception as e:
             logger.error(f"Pipeline error: {str(e)}")
             raise
+
+    def register_provider(self, provider: JobPostingProvider) -> None:
+        """Register or replace a provider adapter by source id."""
+        self.providers[provider.source_id] = provider
 
     def get_statistics(self) -> Dict:
         """Return summary statistics for the currently loaded jobs."""
@@ -173,6 +195,32 @@ class DataPipeline:
             json.dumps(job_dicts, indent=2, ensure_ascii=True),
             encoding="utf-8",
         )
+
+    def _fetch_from_provider(self, source: str, request: JobSearchRequest) -> None:
+        """Fetch jobs from a registered provider."""
+        source_key = source.lower()
+        provider = self.providers.get(source_key)
+        if provider is None:
+            raise ValueError(f"No provider registered for source '{source}'.")
+
+        logger.info(f"Fetching from provider {source_key}")
+        try:
+            jobs = provider.fetch(request)
+            self.jobs.extend(jobs)
+            self.processing_log.append({
+                "source": source_key,
+                "job_count": len(jobs),
+                "legal_basis": getattr(provider, "legal_basis", None),
+                "timestamp": datetime.now().isoformat(),
+            })
+        except Exception as e:
+            logger.error(f"{source_key} provider fetch error: {str(e)}")
+            self.processing_log.append({
+                "source": source_key,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat(),
+            })
+            raise
 
     def _fetch_from_linkedin(self, keywords: List[str], limit: int) -> None:
         """Fetch jobs from LinkedIn."""

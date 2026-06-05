@@ -21,6 +21,9 @@ class JobPosting(BaseModel):
     posted_date: datetime
     source: str  # "linkedin", "kaggle", etc.
     url: Optional[str] = None
+    remote_status: Optional[str] = None  # remote, hybrid, onsite
+    role_type: Optional[str] = None  # Healthcare, Logistics, Sales, etc.
+    source_legal_basis: Optional[str] = None
     
     class Config:
         json_schema_extra = {
@@ -36,7 +39,10 @@ class JobPosting(BaseModel):
                 "description": "Looking for experienced Python developers...",
                 "required_skills": ["Python", "FastAPI", "Docker"],
                 "posted_date": "2026-04-23T10:00:00",
-                "source": "linkedin",
+                "source": "licensed_demo_csv",
+                "remote_status": "hybrid",
+                "role_type": "Engineering",
+                "source_legal_basis": "Demo data or licensed provider contract",
             }
         }
 

@@ -8,6 +8,7 @@ import pandera.errors as pa_errors
 import pytest
 
 from src.data_pipeline.models import JobPosting
+from src.data_pipeline.providers import JobSearchRequest, LocalCsvJobProvider
 from src.data_pipeline.scraper import LinkedInScraper, KaggleDataLoader
 from src.data_pipeline.pipeline import DataPipeline
 from src.data_pipeline.validation import validate_job_postings
@@ -120,6 +121,36 @@ class TestKaggleDataLoader:
 
         assert job.salary_min is None
         assert job.salary_max is None
+
+
+class TestJobProviders:
+    """Test provider adapters used by the ingestion pipeline."""
+
+    def test_local_csv_provider_filters_non_tech_roles(self):
+        """Local provider should normalize and filter broader German roles."""
+        provider = LocalCsvJobProvider("data/job_postings_production.csv")
+
+        jobs = provider.fetch(JobSearchRequest(keywords=["Nurse"], location="Berlin", limit=5))
+
+        assert len(jobs) == 1
+        assert jobs[0].title == "Nurse"
+        assert jobs[0].source == "legal_demo_csv"
+        assert jobs[0].source_legal_basis == "Local legal demo data for portfolio use."
+
+    def test_pipeline_can_run_registered_legal_provider(self):
+        """Pipeline should ingest from provider adapters by source id."""
+        pipeline = DataPipeline()
+
+        jobs = pipeline.run(
+            sources=["legal_demo_csv"],
+            keywords=["Accountant"],
+            limit_per_source=5,
+        )
+
+        assert len(jobs) == 1
+        assert jobs[0].title == "Accountant"
+        assert pipeline.processing_log[0]["source"] == "legal_demo_csv"
+        assert "legal_basis" in pipeline.processing_log[0]
 
 
 class TestDataPipeline:
