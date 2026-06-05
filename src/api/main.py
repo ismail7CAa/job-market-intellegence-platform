@@ -8,7 +8,7 @@ from pathlib import Path
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from loguru import logger
 from sqlalchemy import text
 
@@ -20,13 +20,23 @@ from config.settings import (
     MLFLOW_REGISTERED_MODEL_NAME,
     get_settings,
 )
+from src.api.schemas import (
+    ApplyHandoff,
+    DataGovernanceResponse,
+    EngineWorkflowResponse,
+    JobDetailResponse,
+    JobSearchResponse,
+    SearchFacetsResponse,
+    SimilarJobsResponse,
+)
+from src.api.services.job_search import JobSearchService
 from src.analytics.salary_analysis import SalaryAnomalyDetector
 from src.database import init_database
 from src.analytics.skill_demand import SkillDemandAnalyzer
 from src.data_pipeline.pipeline import DataPipeline
 from src.data_pipeline.models import JobPosting
-from src.nlp.market_agent import MarketIntelligenceAgent
-from src.nlp.query_processor import QueryProcessor
+from src.data_pipeline.providers import JobSearchRequest, LocalCsvJobProvider
+from src.data_pipeline.source_policy import evaluate_source, evaluate_sources
 from src.prediction.role_predictor import RolePredictor
 
 # Initialize database
@@ -58,8 +68,6 @@ analyzer = SkillDemandAnalyzer()
 pipeline = DataPipeline()
 role_predictor = RolePredictor()
 salary_detector = SalaryAnomalyDetector()
-query_processor = QueryProcessor(currency=settings.default_currency)
-market_agent = MarketIntelligenceAgent(salary_detector=salary_detector)
 TRAINING_DATA_PATH = settings.training_data_path
 PRODUCTION_DATA_PATH = settings.production_data_path
 
@@ -76,31 +84,8 @@ def _serialize_jobs(jobs):
 
 def _load_jobs_from_csv(dataset_path: Path) -> list[JobPosting]:
     """Load sample jobs from a local CSV file."""
-    frame = pd.read_csv(dataset_path, parse_dates=["posted_date"])
-    jobs = []
-    for record in frame.to_dict(orient="records"):
-        jobs.append(
-            JobPosting(
-                id=str(record["id"]),
-                title=record["title"],
-                company=record["company"],
-                location=record["location"],
-                salary_min=record.get("salary_min"),
-                salary_max=record.get("salary_max"),
-                job_type=record.get("job_type", "Full-time"),
-                description=record.get("description", ""),
-                required_skills=[
-                    skill.strip()
-                    for skill in str(record.get("required_skills", "")).split(";")
-                    if skill.strip()
-                ],
-                posted_date=record["posted_date"].to_pydatetime()
-                if hasattr(record["posted_date"], "to_pydatetime")
-                else record["posted_date"],
-                source=record.get("source", "local_csv"),
-            )
-        )
-    return jobs
+    provider = LocalCsvJobProvider(dataset_path)
+    return provider.fetch(JobSearchRequest(keywords=[], limit=10_000))
 
 
 def _ensure_pipeline_jobs_loaded() -> None:
@@ -139,6 +124,19 @@ def _ensure_role_predictor_trained() -> None:
     role_predictor.train(training_frame.to_dict(orient="records"))
 
 
+def _get_loaded_job_dicts() -> list[dict]:
+    """Return serialized jobs after loading the local fallback dataset if needed."""
+    _ensure_pipeline_jobs_loaded()
+    return _serialize_jobs(pipeline.jobs)
+
+
+job_search_service = JobSearchService(
+    jobs_loader=_get_loaded_job_dicts,
+    currency=settings.default_currency,
+    region=settings.market_region,
+)
+
+
 def _get_role_prediction_payload(quarters_ahead: int) -> dict:
     """Build a consistent role prediction response payload."""
     _ensure_pipeline_jobs_loaded()
@@ -164,138 +162,16 @@ def _get_role_prediction_payload(quarters_ahead: int) -> dict:
     }
 
 
-@app.get("/")
-async def root():
-    """Portfolio dashboard for the live German market demo."""
-    _ensure_pipeline_jobs_loaded()
+def _render_search_dashboard() -> HTMLResponse:
+    """Render the v1 job-search product experience."""
+    search_payload = job_search_service.build_search_response(query="", limit=12)
     stats = pipeline.get_statistics()
-    try:
-        analysis = _ensure_skill_analysis_loaded()
-        top_skills = analysis.get("top_skills", [])[:8]
-    except Exception:
-        analysis = {}
-        top_skills = []
-
-    try:
-        role_payload = _get_role_prediction_payload(quarters_ahead=1)
-        predicted_roles = role_payload.get("predicted_roles", [])[:5]
-    except Exception as exc:
-        logger.warning(f"Role forecast unavailable on dashboard: {exc}")
-        predicted_roles = []
-
-    jobs = _serialize_jobs(pipeline.jobs)
-    anomalies = salary_detector.detect_anomalies(jobs)[:4] if jobs else []
-    remote_jobs = sum(
-        1
-        for job in jobs
-        if str(job.get("remote_status", "")).lower() == "remote"
-    )
-    hybrid_jobs = sum(
-        1
-        for job in jobs
-        if str(job.get("remote_status", "")).lower() == "hybrid"
-    )
-    onsite_jobs = sum(
-        1
-        for job in jobs
-        if str(job.get("remote_status", "")).lower() == "onsite"
-    )
-
+    initial_payload = json.dumps(search_payload, default=str)
+    total_jobs = stats.get("total_jobs", 0)
+    total_companies = stats.get("companies", 0)
+    total_locations = stats.get("locations", 0)
     salary_stats = stats.get("salary_stats", {})
     median_salary = int(salary_stats.get("median", 0)) if salary_stats else 0
-    max_skill_demand = max(
-        [skill.get("demand", 0) for skill in top_skills] or [1]
-    )
-    top_skill_rows = "".join(
-        f"""
-        <div class="skill-row">
-          <div>
-            <strong>{escape(str(skill.get("skill", "Unknown")))}</strong>
-            <span>{skill.get("demand_percentage", 0):.1f}% of skill mentions</span>
-          </div>
-          <div class="skill-meter" aria-label="Demand for {escape(str(skill.get("skill", "Unknown")))}">
-            <i style="width: {int((skill.get("demand", 0) / max_skill_demand) * 100)}%"></i>
-          </div>
-          <b>{skill.get("demand", 0)}</b>
-        </div>
-        """
-        for skill in top_skills
-    ) or """
-        <div class="skill-row">
-          <div><strong>No skill data loaded</strong><span>Run ingestion or load demo data</span></div>
-          <div class="skill-meter"><i style="width: 0%"></i></div>
-          <b>0</b>
-        </div>
-    """
-
-    max_role_index = max(
-        [role.get("projected_demand_index", 0) for role in predicted_roles] or [1]
-    )
-    role_rows = "".join(
-        f"""
-        <div class="role-row">
-          <div>
-            <strong>{escape(str(role.get("role", "Unknown role")))}</strong>
-            <span>Confidence {role.get("confidence_score", 0):.2f}</span>
-          </div>
-          <div class="role-score">
-            <i style="width: {int((role.get("projected_demand_index", 0) / max_role_index) * 100)}%"></i>
-          </div>
-          <b>{role.get("projected_demand_index", 0):.1f}</b>
-        </div>
-        """
-        for role in predicted_roles
-    ) or """
-        <div class="role-row">
-          <div><strong>Forecast unavailable</strong><span>Model output not loaded</span></div>
-          <div class="role-score"><i style="width: 0%"></i></div>
-          <b>0.0</b>
-        </div>
-    """
-
-    anomaly_rows = "".join(
-        f"""
-        <tr>
-          <td>{escape(str(item.get("title", "Unknown")))}</td>
-          <td>{escape(str(item.get("location", "Unknown")))}</td>
-          <td>{item.get("salary_avg", 0):,.0f} {settings.default_currency}</td>
-          <td>{escape(", ".join(item.get("reasons", [])))}</td>
-        </tr>
-        """
-        for item in anomalies
-    ) or """
-        <tr>
-          <td colspan="4">No salary anomalies detected in the loaded dataset.</td>
-        </tr>
-    """
-
-    city_counts = {}
-    for job in jobs:
-        location = str(job.get("location", "Unknown")).replace(", Germany", "")
-        city_counts[location] = city_counts.get(location, 0) + 1
-    city_rows = "".join(
-        f"""
-        <span class="city-pill">
-          {escape(city)}
-          <b>{count}</b>
-        </span>
-        """
-        for city, count in sorted(city_counts.items(), key=lambda item: (-item[1], item[0]))
-    )
-
-    dashboard_payload = json.dumps(
-        {
-            "totalJobs": stats.get("total_jobs", 0),
-            "locations": stats.get("locations", 0),
-            "companies": stats.get("companies", 0),
-            "uniqueSkills": stats.get("unique_skills", 0),
-            "medianSalary": median_salary,
-            "currency": settings.default_currency,
-            "remoteJobs": remote_jobs,
-            "hybridJobs": hybrid_jobs,
-            "onsiteJobs": onsite_jobs,
-        }
-    )
 
     return HTMLResponse(
         f"""
@@ -304,366 +180,298 @@ async def root():
         <head>
           <meta charset="utf-8">
           <meta name="viewport" content="width=device-width, initial-scale=1">
-          <title>German Job Market Intelligence</title>
+          <title>Germany Job Search Intelligence</title>
           <style>
             :root {{
-              color-scheme: dark;
-              --bg: #0b0f14;
-              --surface: #111821;
-              --surface-2: #17212c;
-              --ink: #edf4f8;
-              --muted: #9eb0bf;
-              --line: #263544;
-              --green: #3ddc97;
-              --blue: #66a6ff;
-              --amber: #f2b84b;
-              --red: #ff6b6b;
-              --white: #ffffff;
+              color-scheme: light;
+              --bg: #f6f7f8;
+              --ink: #172026;
+              --muted: #62707a;
+              --line: #d9e0e5;
+              --panel: #ffffff;
+              --panel-soft: #eef4f1;
+              --green: #126b4f;
+              --blue: #235f9c;
+              --amber: #9b6413;
+              --danger: #9b2c2c;
             }}
             * {{ box-sizing: border-box; }}
             body {{
               margin: 0;
-              font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-              background:
-                radial-gradient(circle at top left, rgba(61, 220, 151, 0.12), transparent 28rem),
-                linear-gradient(180deg, #0b0f14 0%, #0e141b 48%, #0b0f14 100%);
+              background: var(--bg);
               color: var(--ink);
+              font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
             }}
-            a {{ color: inherit; text-decoration: none; }}
+            a {{ color: inherit; }}
             main {{
-              width: min(1280px, calc(100% - 28px));
+              width: min(1240px, calc(100% - 28px));
               margin: 0 auto;
-              padding: 22px 0 42px;
+              padding: 18px 0 34px;
             }}
             .topbar {{
+              min-height: 58px;
               display: flex;
-              justify-content: space-between;
               align-items: center;
-              gap: 18px;
-              min-height: 60px;
+              justify-content: space-between;
+              gap: 16px;
               border-bottom: 1px solid var(--line);
             }}
             .brand {{
               display: flex;
               align-items: center;
-              gap: 12px;
+              gap: 10px;
+              text-decoration: none;
               font-weight: 800;
             }}
             .mark {{
-              display: grid;
-              place-items: center;
               width: 34px;
               height: 34px;
-              border: 1px solid rgba(61, 220, 151, 0.55);
-              background: rgba(61, 220, 151, 0.12);
+              display: grid;
+              place-items: center;
+              border: 1px solid var(--green);
               color: var(--green);
+              background: #e8f3ee;
               font-size: 13px;
             }}
             .nav {{
               display: flex;
               align-items: center;
-              gap: 10px;
+              gap: 12px;
               color: var(--muted);
               font-size: 14px;
             }}
             .nav a {{
-              padding: 8px 10px;
-              border: 1px solid transparent;
+              text-decoration: none;
+              padding: 8px 0;
             }}
-            .nav a:hover {{
-              border-color: var(--line);
-              color: var(--ink);
-            }}
-            .status-dot {{
-              width: 8px;
-              height: 8px;
-              background: var(--green);
-              border-radius: 50%;
-              box-shadow: 0 0 0 4px rgba(61, 220, 151, 0.12);
-            }}
-            .hero-grid {{
+            .intro {{
+              padding: 24px 0 18px;
               display: grid;
-              grid-template-columns: minmax(0, 1fr) 420px;
+              grid-template-columns: minmax(0, 1fr) 360px;
               gap: 18px;
-              padding: 26px 0 18px;
-              align-items: stretch;
-            }}
-            .hero-panel {{
-              min-height: 410px;
-              display: flex;
-              flex-direction: column;
-              justify-content: space-between;
-              padding: 28px;
-              border: 1px solid var(--line);
-              background:
-                linear-gradient(135deg, rgba(102, 166, 255, 0.12), transparent 42%),
-                linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015));
+              align-items: end;
             }}
             h1 {{
               margin: 0;
-              max-width: 780px;
-              font-size: clamp(44px, 7vw, 88px);
-              line-height: 0.92;
+              max-width: 850px;
+              font-size: clamp(38px, 6vw, 76px);
+              line-height: 0.96;
               letter-spacing: 0;
             }}
-            .eyebrow {{
-              display: inline-flex;
-              align-items: center;
-              gap: 10px;
-              width: fit-content;
-              margin-bottom: 18px;
-              padding: 7px 10px;
-              border: 1px solid rgba(61, 220, 151, 0.35);
-              background: rgba(61, 220, 151, 0.08);
-              color: var(--green);
-              font-size: 13px;
-              font-weight: 700;
-            }}
             .lede {{
-              max-width: 720px;
-              margin: 22px 0 0;
+              max-width: 760px;
+              margin: 18px 0 0;
               color: var(--muted);
               font-size: 18px;
-              line-height: 1.6;
+              line-height: 1.55;
             }}
-            .actions {{
-              display: flex;
-              flex-wrap: wrap;
-              gap: 12px;
-              margin-top: 30px;
-            }}
-            .button {{
-              display: inline-flex;
-              align-items: center;
-              justify-content: center;
-              min-height: 42px;
-              padding: 0 14px;
+            .source-note {{
+              padding: 16px;
               border: 1px solid var(--line);
-              background: var(--green);
-              color: #06110c;
-              font-weight: 700;
+              background: var(--panel-soft);
+              color: #2d4f43;
+              line-height: 1.45;
               font-size: 14px;
             }}
-            .button.secondary {{
-              background: transparent;
-              color: var(--ink);
-            }}
-            .button.ghost {{
-              background: var(--surface-2);
-              color: var(--ink);
-            }}
-            .system-panel, .panel {{
+            .search-shell {{
               border: 1px solid var(--line);
-              background: rgba(17, 24, 33, 0.86);
+              background: var(--panel);
+              padding: 14px;
             }}
-            .system-panel {{
-              padding: 20px;
+            .search-form {{
               display: grid;
-              gap: 14px;
+              grid-template-columns: minmax(220px, 1fr) minmax(160px, 220px) 160px 128px;
+              gap: 10px;
             }}
-            .terminal {{
-              min-height: 172px;
-              padding: 16px;
+            label {{
+              display: grid;
+              gap: 6px;
+              color: var(--muted);
+              font-size: 12px;
+              font-weight: 700;
+              text-transform: uppercase;
+            }}
+            input, select, button {{
+              min-height: 44px;
               border: 1px solid var(--line);
-              background: #070a0e;
-              color: #c9f7df;
-              font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+              background: #fff;
+              color: var(--ink);
+              font: inherit;
+            }}
+            input, select {{ padding: 0 12px; }}
+            button {{
+              align-self: end;
+              background: var(--green);
+              border-color: var(--green);
+              color: #fff;
+              font-weight: 800;
+              cursor: pointer;
+            }}
+            .quick-row {{
+              display: flex;
+              flex-wrap: wrap;
+              gap: 8px;
+              margin-top: 12px;
+            }}
+            .quick-row button {{
+              min-height: 34px;
+              padding: 0 10px;
+              border-color: var(--line);
+              background: #f9fbfa;
+              color: var(--ink);
               font-size: 13px;
-              line-height: 1.65;
+              font-weight: 700;
             }}
-            .terminal span {{ color: var(--muted); }}
-            .mini-chart {{
+            .layout {{
               display: grid;
-              grid-template-columns: repeat(14, 1fr);
-              align-items: end;
-              gap: 5px;
-              height: 150px;
-              padding: 16px;
-              border: 1px solid var(--line);
-              background: var(--surface);
+              grid-template-columns: minmax(0, 1fr) 330px;
+              gap: 14px;
+              margin-top: 14px;
+              align-items: start;
             }}
-            .mini-chart i {{
-              display: block;
-              background: linear-gradient(180deg, var(--blue), var(--green));
-              min-height: 12px;
-            }}
-            .metric-strip {{
+            .summary {{
               display: grid;
               grid-template-columns: repeat(4, minmax(0, 1fr));
-              gap: 12px;
-              margin-bottom: 18px;
+              gap: 10px;
+              margin-top: 14px;
+            }}
+            .metric, .side-panel, .job-card {{
+              border: 1px solid var(--line);
+              background: var(--panel);
             }}
             .metric {{
-              min-height: 122px;
-              padding: 16px;
-              border: 1px solid var(--line);
-              background: var(--surface);
+              padding: 14px;
+              min-height: 92px;
             }}
-            .metric span, .panel-title span, .skill-row span, .role-row span {{
-              display: block;
+            .metric span, .job-meta, .pill, .muted {{
               color: var(--muted);
               font-size: 13px;
             }}
             .metric strong {{
               display: block;
-              margin-top: 16px;
-              font-size: 32px;
+              margin-top: 10px;
+              font-size: 26px;
               letter-spacing: 0;
             }}
-            .metric small {{
-              display: block;
-              margin-top: 8px;
-              color: var(--muted);
-            }}
-            .dashboard-grid {{
-              display: grid;
-              grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
-              gap: 12px;
-            }}
-            .panel {{
-              padding: 18px;
-              min-width: 0;
-            }}
-            .panel-title {{
+            .results-head {{
               display: flex;
               justify-content: space-between;
-              align-items: flex-start;
-              gap: 16px;
-              margin-bottom: 16px;
+              align-items: center;
+              gap: 12px;
+              margin: 8px 0 10px;
             }}
             h2 {{
               margin: 0;
               font-size: 20px;
               letter-spacing: 0;
             }}
-            .skill-stack, .role-stack {{
+            .job-list {{
               display: grid;
               gap: 10px;
             }}
-            .skill-row, .role-row {{
+            .job-card {{
+              padding: 16px;
               display: grid;
-              grid-template-columns: minmax(120px, 1fr) minmax(110px, 0.7fr) 42px;
-              align-items: center;
-              gap: 14px;
-              padding: 12px;
-              border: 1px solid var(--line);
-              background: rgba(255, 255, 255, 0.025);
-            }}
-            .skill-meter, .role-score {{
-              height: 8px;
-              background: #0a0f15;
-              overflow: hidden;
-            }}
-            .skill-meter i, .role-score i {{
-              display: block;
-              height: 100%;
-              background: var(--green);
-            }}
-            .role-score i {{ background: var(--blue); }}
-            .market-layout {{
-              display: grid;
-              grid-template-columns: 1fr 1fr;
               gap: 12px;
-              margin-top: 12px;
             }}
-            .work-mode {{
-              display: grid;
-              gap: 10px;
-              padding: 14px;
-              border: 1px solid var(--line);
-              background: rgba(255, 255, 255, 0.025);
-            }}
-            .mode-track {{
-              height: 12px;
-              background: #0a0f15;
-              display: flex;
-              overflow: hidden;
-            }}
-            .mode-track i:nth-child(1) {{ background: var(--green); }}
-            .mode-track i:nth-child(2) {{ background: var(--blue); }}
-            .mode-track i:nth-child(3) {{ background: var(--amber); }}
-            .city-cloud {{
-              display: flex;
-              flex-wrap: wrap;
-              gap: 8px;
-            }}
-            .city-pill {{
-              display: inline-flex;
-              align-items: center;
-              gap: 8px;
-              padding: 8px 10px;
-              border: 1px solid var(--line);
-              background: rgba(255, 255, 255, 0.035);
-              color: var(--muted);
-              font-size: 13px;
-            }}
-            .city-pill b {{ color: var(--ink); }}
-            table {{
-              width: 100%;
-              border-collapse: collapse;
-              font-size: 14px;
-            }}
-            th, td {{
-              padding: 12px 10px;
-              text-align: left;
-              border-bottom: 1px solid var(--line);
-            }}
-            th {{
-              color: var(--muted);
-              font-size: 12px;
-              text-transform: uppercase;
-              font-weight: 700;
-            }}
-            .agent {{
-              margin-top: 12px;
-              display: grid;
-              grid-template-columns: minmax(0, 1fr) 170px;
-              gap: 10px;
-            }}
-            .agent input {{
-              min-height: 44px;
-              padding: 0 12px;
-              border: 1px solid var(--line);
-              background: #0a0f15;
-              color: var(--ink);
-              font: inherit;
-            }}
-            .agent-output {{
-              margin-top: 12px;
-              min-height: 84px;
-              padding: 14px;
-              border: 1px solid var(--line);
-              background: #0a0f15;
-              color: var(--muted);
-              line-height: 1.55;
-            }}
-            .footer-band {{
-              margin-top: 18px;
-              padding: 18px;
-              border: 1px solid var(--line);
-              color: var(--muted);
-              background: rgba(255, 255, 255, 0.025);
+            .job-top {{
               display: flex;
               justify-content: space-between;
-              gap: 18px;
+              gap: 16px;
+              align-items: start;
+            }}
+            .job-title {{
+              margin: 0 0 4px;
+              font-size: 19px;
+            }}
+            .salary {{
+              text-align: right;
+              min-width: 150px;
+              color: var(--green);
+              font-weight: 800;
+            }}
+            .job-desc {{
+              margin: 0;
+              color: #3d4a52;
+              line-height: 1.5;
+            }}
+            .tags {{
+              display: flex;
+              gap: 6px;
               flex-wrap: wrap;
             }}
-            @media (max-width: 980px) {{
-              .hero-grid, .dashboard-grid, .market-layout {{
+            .pill {{
+              display: inline-flex;
+              align-items: center;
+              min-height: 28px;
+              padding: 0 8px;
+              border: 1px solid var(--line);
+              background: #f8faf9;
+            }}
+            .job-actions {{
+              display: flex;
+              justify-content: space-between;
+              gap: 10px;
+              align-items: center;
+              border-top: 1px solid var(--line);
+              padding-top: 12px;
+            }}
+            .apply {{
+              display: inline-flex;
+              align-items: center;
+              justify-content: center;
+              min-height: 38px;
+              padding: 0 12px;
+              text-decoration: none;
+              background: var(--blue);
+              color: #fff;
+              font-weight: 800;
+            }}
+            .side-stack {{
+              display: grid;
+              gap: 10px;
+            }}
+            .side-panel {{
+              padding: 14px;
+            }}
+            .side-panel h3 {{
+              margin: 0 0 10px;
+              font-size: 16px;
+            }}
+            .rank-row {{
+              display: flex;
+              justify-content: space-between;
+              gap: 12px;
+              padding: 9px 0;
+              border-bottom: 1px solid var(--line);
+            }}
+            .rank-row:last-child {{ border-bottom: 0; }}
+            .governance {{
+              border-left: 4px solid var(--amber);
+              background: #fff8e9;
+            }}
+            .empty {{
+              padding: 28px;
+              border: 1px solid var(--line);
+              background: var(--panel);
+              color: var(--muted);
+            }}
+            @media (max-width: 940px) {{
+              .intro, .layout, .search-form {{
                 grid-template-columns: 1fr;
               }}
-              .metric-strip {{
+              .summary {{
                 grid-template-columns: repeat(2, minmax(0, 1fr));
               }}
+              button {{ align-self: stretch; }}
             }}
-            @media (max-width: 640px) {{
-              main {{ width: min(100% - 20px, 1280px); padding-top: 12px; }}
-              .topbar {{ align-items: flex-start; flex-direction: column; padding-bottom: 14px; }}
+            @media (max-width: 620px) {{
+              main {{ width: min(100% - 18px, 1240px); padding-top: 10px; }}
+              .topbar {{ align-items: flex-start; flex-direction: column; padding-bottom: 12px; }}
               .nav {{ flex-wrap: wrap; }}
-              .hero-panel {{ padding: 18px; min-height: 360px; }}
-              .metric-strip {{ grid-template-columns: 1fr; }}
-              .skill-row, .role-row {{ grid-template-columns: 1fr; }}
-              .agent {{ grid-template-columns: 1fr; }}
+              .summary {{ grid-template-columns: 1fr; }}
+              .job-top, .job-actions {{ flex-direction: column; }}
+              .salary {{ text-align: left; }}
             }}
           </style>
         </head>
@@ -672,171 +480,287 @@ async def root():
             <header class="topbar">
               <a class="brand" href="/">
                 <span class="mark">DE</span>
-                <span>German Job Market Intelligence</span>
+                <span>Germany Job Search Intelligence</span>
               </a>
               <nav class="nav" aria-label="Primary">
-                <span class="status-dot" aria-hidden="true"></span>
-                <span>Live EC2 demo</span>
+                <a href="/jobs/search">Search API</a>
+                <a href="/stats/jobs">Stats</a>
                 <a href="/docs">API Docs</a>
                 <a href="/health">Health</a>
-                <a href="/stats/jobs">JSON</a>
               </nav>
             </header>
 
-            <section class="hero-grid">
-              <div class="hero-panel">
-                <div>
-                  <div class="eyebrow">AWS EC2 · FastAPI · Postgres · MLflow-ready</div>
-                  <h1>German tech labor signals, modeled and explained.</h1>
-                  <p class="lede">
-                    A portfolio-grade data and ML platform for skill demand, salary anomalies,
-                    role forecasts, and grounded market explanations across German tech roles.
-                  </p>
-                  <div class="actions">
-                    <a class="button" href="/docs">Explore API</a>
-                    <a class="button secondary" href="/agent/explain?question=Why%20is%20this%20salary%20anomalous%3F&job_id=prod_005">Agent Evidence</a>
-                    <a class="button ghost" href="/predict/roles">Role Forecast</a>
-                  </div>
-                </div>
-                <div class="footer-band">
-                  <span>Dataset: reproducible German demo market</span>
-                  <span>Currency: {settings.default_currency}</span>
-                  <span>Region: {settings.market_region}</span>
-                </div>
+            <section class="intro">
+              <div>
+                <h1>Search jobs in Germany and understand the market around them.</h1>
+                <p class="lede">
+                  Find related roles across professions, compare listed salaries, see hiring companies,
+                  and open a source or apply link when the data provides one.
+                </p>
               </div>
-
-              <aside class="system-panel" aria-label="System telemetry">
-                <div class="terminal">
-                  <span>$ curl /health</span><br>
-                  status: connected<br>
-                  database: postgres<br>
-                  deploy: docker compose on ec2<br>
-                  agent: grounded explanations ready
-                </div>
-                <div class="mini-chart" aria-label="Demand signal chart">
-                  <i style="height: 36%"></i><i style="height: 48%"></i><i style="height: 42%"></i>
-                  <i style="height: 58%"></i><i style="height: 62%"></i><i style="height: 54%"></i>
-                  <i style="height: 74%"></i><i style="height: 66%"></i><i style="height: 80%"></i>
-                  <i style="height: 72%"></i><i style="height: 88%"></i><i style="height: 84%"></i>
-                  <i style="height: 92%"></i><i style="height: 96%"></i>
-                </div>
+              <aside class="source-note">
+                Data policy: v1 runs on legal local demo data. The production engine must use official APIs,
+                licensed job-data providers, or company feeds with explicit permission.
               </aside>
             </section>
 
-            <section class="metric-strip" aria-label="Market metrics">
-              <div class="metric"><span>Jobs loaded</span><strong>{stats.get("total_jobs", 0)}</strong><small>validated postings</small></div>
-              <div class="metric"><span>Median salary</span><strong>{median_salary:,}</strong><small>{settings.default_currency} annual midpoint</small></div>
-              <div class="metric"><span>Locations</span><strong>{stats.get("locations", 0)}</strong><small>German hiring markets</small></div>
-              <div class="metric"><span>Skills tracked</span><strong>{stats.get("unique_skills", 0)}</strong><small>normalized demand signals</small></div>
-            </section>
-
-            <section class="dashboard-grid">
-              <article class="panel">
-                <div class="panel-title">
-                  <div>
-                    <h2>Skill Demand</h2>
-                    <span>Ranked by occurrence across loaded German tech roles</span>
-                  </div>
-                  <a class="button secondary" href="/trends/skills">Open JSON</a>
-                </div>
-                <div class="skill-stack">{top_skill_rows}</div>
-              </article>
-
-              <article class="panel">
-                <div class="panel-title">
-                  <div>
-                    <h2>Role Forecast</h2>
-                    <span>Model-backed projected demand index</span>
-                  </div>
-                  <a class="button secondary" href="/predict/roles">Endpoint</a>
-                </div>
-                <div class="role-stack">{role_rows}</div>
-              </article>
-            </section>
-
-            <section class="dashboard-grid" style="margin-top: 12px;">
-              <article class="panel">
-                <div class="panel-title">
-                  <div>
-                    <h2>Salary Anomaly Watch</h2>
-                    <span>Outliers detected from salary midpoint distributions</span>
-                  </div>
-                  <a class="button secondary" href="/salary/anomalies">Inspect</a>
-                </div>
-                <table>
-                  <thead>
-                    <tr><th>Role</th><th>Location</th><th>Salary Avg</th><th>Reason</th></tr>
-                  </thead>
-                  <tbody>{anomaly_rows}</tbody>
-                </table>
-              </article>
-
-              <article class="panel">
-                <div class="panel-title">
-                  <div>
-                    <h2>Market Coverage</h2>
-                    <span>Locations and work-mode distribution in the demo dataset</span>
-                  </div>
-                </div>
-                <div class="market-layout">
-                  <div class="work-mode">
-                    <strong>Work modes</strong>
-                    <div class="mode-track" aria-label="Work mode distribution">
-                      <i style="width: {remote_jobs * 10}%"></i>
-                      <i style="width: {hybrid_jobs * 10}%"></i>
-                      <i style="width: {onsite_jobs * 10}%"></i>
-                    </div>
-                    <span>Remote {remote_jobs} · Hybrid {hybrid_jobs} · Onsite {onsite_jobs}</span>
-                  </div>
-                  <div class="city-cloud">{city_rows}</div>
-                </div>
-              </article>
-            </section>
-
-            <section class="panel" style="margin-top: 12px;">
-              <div class="panel-title">
-                <div>
-                  <h2>Ask the Market Agent</h2>
-                  <span>Grounded answers from skill analytics, salary checks, role forecasts, and loaded job evidence</span>
-                </div>
-              </div>
-              <form class="agent" id="agent-form">
-                <input id="agent-question" name="question" value="What are the top 3 skills?" aria-label="Market question">
-                <button class="button" type="submit">Ask Agent</button>
+            <section class="search-shell" aria-label="Job search">
+              <form class="search-form" id="search-form">
+                <label>
+                  Job or keyword
+                  <input id="query" name="q" value="" placeholder="Nurse, Marketing Manager, Data Analyst">
+                </label>
+                <label>
+                  Location
+                  <input id="location" name="location" placeholder="Berlin, Munich, Cologne">
+                </label>
+                <label>
+                  Work mode
+                  <select id="work-mode" name="work_mode">
+                    <option value="any">Any</option>
+                    <option value="remote">Remote</option>
+                    <option value="hybrid">Hybrid</option>
+                    <option value="onsite">Onsite</option>
+                  </select>
+                </label>
+                <button type="submit">Search</button>
               </form>
-              <div class="agent-output" id="agent-output">
-                Ask a question about the German market dataset. The agent will answer from platform evidence.
+              <div class="quick-row" aria-label="Example searches">
+                <button type="button" data-query="Nurse">Nurse</button>
+                <button type="button" data-query="Marketing Manager">Marketing Manager</button>
+                <button type="button" data-query="Warehouse">Warehouse</button>
+                <button type="button" data-query="Accountant">Accountant</button>
+                <button type="button" data-query="Data Analyst">Data Analyst</button>
               </div>
             </section>
 
-            <footer class="footer-band">
-              <span>Built with FastAPI, Pandera, scikit-learn, SQLAlchemy, Postgres, Docker, GHCR, and AWS EC2.</span>
-              <span>Last refreshed {datetime.now().strftime("%Y-%m-%d %H:%M")}</span>
-            </footer>
+            <section class="summary" aria-label="Platform coverage">
+              <div class="metric"><span>Jobs indexed</span><strong>{total_jobs}</strong></div>
+              <div class="metric"><span>Companies</span><strong>{total_companies}</strong></div>
+              <div class="metric"><span>German locations</span><strong>{total_locations}</strong></div>
+              <div class="metric"><span>Median listed salary</span><strong>{median_salary:,}</strong><span>{settings.default_currency}</span></div>
+            </section>
+
+            <section class="layout">
+              <div>
+                <div class="results-head">
+                  <h2 id="results-title">All indexed jobs</h2>
+                  <span class="muted" id="results-count"></span>
+                </div>
+                <div class="job-list" id="job-list"></div>
+              </div>
+              <aside class="side-stack">
+                <section class="side-panel">
+                  <h3>Search intelligence</h3>
+                  <div class="rank-row"><span>Average salary</span><strong id="avg-salary">-</strong></div>
+                  <div class="rank-row"><span>Salary samples</span><strong id="salary-samples">0</strong></div>
+                  <div class="rank-row"><span>Apply links</span><strong id="apply-links">0</strong></div>
+                </section>
+                <section class="side-panel">
+                  <h3>Top companies</h3>
+                  <div id="top-companies"></div>
+                </section>
+                <section class="side-panel">
+                  <h3>Top locations</h3>
+                  <div id="top-locations"></div>
+                </section>
+                <section class="side-panel governance">
+                  <h3>Legal data guardrails</h3>
+                  <p class="muted" id="legal-position"></p>
+                </section>
+              </aside>
+            </section>
           </main>
 
           <script>
-            window.dashboard = {dashboard_payload};
-            const form = document.getElementById('agent-form');
-            const output = document.getElementById('agent-output');
+            const initialPayload = {initial_payload};
+            const form = document.getElementById('search-form');
+            const queryInput = document.getElementById('query');
+            const locationInput = document.getElementById('location');
+            const workModeInput = document.getElementById('work-mode');
+            const jobList = document.getElementById('job-list');
+            const countLabel = document.getElementById('results-count');
+            const titleLabel = document.getElementById('results-title');
+            const avgSalary = document.getElementById('avg-salary');
+            const salarySamples = document.getElementById('salary-samples');
+            const applyLinks = document.getElementById('apply-links');
+            const topCompanies = document.getElementById('top-companies');
+            const topLocations = document.getElementById('top-locations');
+            const legalPosition = document.getElementById('legal-position');
+
+            function escapeHtml(value) {{
+              return String(value ?? '').replace(/[&<>"']/g, (char) => ({{
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+              }}[char]));
+            }}
+
+            function renderRankRows(rows, emptyText) {{
+              if (!rows || rows.length === 0) {{
+                return `<div class="muted">${{emptyText}}</div>`;
+              }}
+              return rows.map(([name, count]) => `
+                <div class="rank-row"><span>${{escapeHtml(name)}}</span><strong>${{count}}</strong></div>
+              `).join('');
+            }}
+
+            function renderJobs(payload) {{
+              const jobs = payload.jobs || [];
+              countLabel.textContent = `${{payload.count}} matching jobs`;
+              titleLabel.textContent = payload.query ? `Results for "${{payload.query}}"` : 'All indexed jobs';
+              avgSalary.textContent = payload.summary.average_salary
+                ? `${{Math.round(payload.summary.average_salary).toLocaleString('en-US')}} EUR`
+                : '-';
+              salarySamples.textContent = payload.summary.salary_sample_size || 0;
+              applyLinks.textContent = payload.summary.apply_links_available || 0;
+              topCompanies.innerHTML = renderRankRows(payload.summary.top_companies, 'No companies for this search.');
+              topLocations.innerHTML = renderRankRows(payload.summary.top_locations, 'No locations for this search.');
+              legalPosition.textContent = payload.data_governance.legal_position;
+
+              if (jobs.length === 0) {{
+                jobList.innerHTML = '<div class="empty">No matching jobs found in the loaded dataset. Try a broader profession or remove filters.</div>';
+                return;
+              }}
+
+              jobList.innerHTML = jobs.map((job) => `
+                <article class="job-card">
+                  <div class="job-top">
+                    <div>
+                      <h3 class="job-title">${{escapeHtml(job.title)}}</h3>
+                      <div class="job-meta">${{escapeHtml(job.company)}} · ${{escapeHtml(job.location)}} · ${{escapeHtml(job.remote_status || 'work mode unknown')}}</div>
+                    </div>
+                    <div class="salary">${{escapeHtml(job.salary_label)}}</div>
+                  </div>
+                  <p class="job-desc">${{escapeHtml(job.description)}}</p>
+                  <div class="tags">
+                    ${{(job.required_skills || []).slice(0, 5).map((skill) => `<span class="pill">${{escapeHtml(skill)}}</span>`).join('')}}
+                    ${{job.role_type ? `<span class="pill">${{escapeHtml(job.role_type)}}</span>` : ''}}
+                  </div>
+                  <div class="job-actions">
+                    <span class="muted">${{escapeHtml(job.source)}} · ${{escapeHtml(job.source_legal_basis || 'source policy not set')}}</span>
+                    <a class="apply" href="${{escapeHtml(job.apply_endpoint)}}" target="_blank" rel="noopener noreferrer">Apply</a>
+                  </div>
+                </article>
+              `).join('');
+            }}
+
+            async function runSearch() {{
+              const params = new URLSearchParams();
+              params.set('q', queryInput.value.trim());
+              if (locationInput.value.trim()) params.set('location', locationInput.value.trim());
+              params.set('work_mode', workModeInput.value);
+              params.set('limit', '25');
+              const response = await fetch('/jobs/search?' + params.toString());
+              const payload = await response.json();
+              renderJobs(payload);
+            }}
+
             form.addEventListener('submit', async (event) => {{
               event.preventDefault();
-              const question = document.getElementById('agent-question').value.trim();
-              if (!question) return;
-              output.textContent = 'Thinking with platform evidence...';
-              try {{
-                const response = await fetch('/query?question=' + encodeURIComponent(question), {{ method: 'POST' }});
-                const payload = await response.json();
-                output.textContent = payload.answer || 'No answer returned.';
-              }} catch (error) {{
-                output.textContent = 'The agent could not answer right now. Check API health and try again.';
-              }}
+              await runSearch();
             }});
+
+            document.querySelectorAll('[data-query]').forEach((button) => {{
+              button.addEventListener('click', async () => {{
+                queryInput.value = button.dataset.query;
+                await runSearch();
+              }});
+            }});
+
+            renderJobs(initialPayload);
           </script>
         </body>
         </html>
         """
     )
+
+
+@app.get("/")
+async def root():
+    """Germany-wide job search homepage."""
+    return _render_search_dashboard()
+
+
+@app.get("/jobs/search", response_model=JobSearchResponse)
+async def search_jobs(
+    q: str = Query("", description="Job title, keyword, company, skill, or profession"),
+    location: str | None = Query(None, description="German city or region filter"),
+    work_mode: str | None = Query(None, description="remote, hybrid, onsite, or any"),
+    limit: int = Query(25, ge=1, le=100),
+):
+    """Search Germany-focused job data with salary, company, and apply-link context."""
+    return job_search_service.build_search_response(
+        query=q,
+        location=location,
+        work_mode=work_mode,
+        limit=limit,
+    )
+
+
+@app.get("/jobs/search/facets", response_model=SearchFacetsResponse)
+async def get_search_facets():
+    """Return available filters for the current job index."""
+    return job_search_service.build_search_facets()
+
+
+@app.get("/jobs/{job_id}", response_model=JobDetailResponse)
+async def get_job_detail(job_id: str):
+    """Return full job detail for a result page."""
+    job = job_search_service.find_job_by_id(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+    return job_search_service.build_job_detail(job)
+
+
+@app.get("/jobs/{job_id}/similar", response_model=SimilarJobsResponse)
+async def get_similar_jobs(
+    job_id: str,
+    limit: int = Query(5, ge=1, le=20),
+):
+    """Return jobs related to the selected posting."""
+    job = job_search_service.find_job_by_id(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+    return job_search_service.build_similar_jobs(job, limit=limit)
+
+
+@app.get("/jobs/{job_id}/apply", response_model=ApplyHandoff)
+async def apply_to_job(
+    job_id: str,
+    redirect: bool = Query(True, description="Redirect to apply URL when true; return JSON handoff when false."),
+):
+    """Send a candidate to the best legal apply/source page for a job."""
+    job = job_search_service.find_job_by_id(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+
+    handoff = job_search_service.build_apply_handoff(job)
+    if not handoff["source_allowed"]:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "message": "Apply handoff blocked because the job source is not approved.",
+                "job_id": job_id,
+                "source": handoff["source"],
+            },
+        )
+
+    if redirect:
+        return RedirectResponse(url=handoff["apply_url"], status_code=307)
+    return handoff
+
+
+@app.get("/data/governance", response_model=DataGovernanceResponse)
+async def get_data_governance():
+    """Return legal-source governance for the currently loaded job data."""
+    return job_search_service.build_data_governance_report()
+
+
+@app.get("/engine/workflow", response_model=EngineWorkflowResponse)
+async def get_engine_workflow():
+    """Return the platform workflow from search intent to apply handoff."""
+    return job_search_service.build_engine_workflow()
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
@@ -873,6 +797,30 @@ async def fetch_data(
         Pipeline execution result with statistics
     """
     try:
+        decisions = evaluate_sources(sources)
+        blocked = [decision for decision in decisions if not decision.allowed]
+        if blocked:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "message": "Live ingestion blocked by data-source governance.",
+                    "blocked_sources": [
+                        {
+                            "source": decision.source,
+                            "reason": decision.reason,
+                            "required_action": decision.required_action,
+                        }
+                        for decision in blocked
+                    ],
+                    "allowed_sources": [
+                        "legal_demo_csv",
+                        "licensed_provider",
+                        "company_feed",
+                        "official_api",
+                    ],
+                },
+            )
+
         logger.info(f"Fetching data from {sources}")
         jobs = pipeline.run(
             sources=sources,
@@ -887,6 +835,8 @@ async def fetch_data(
             "total_jobs": len(jobs),
             "statistics": stats
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Data fetch error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1010,64 +960,6 @@ async def predict_roles(
         Predicted roles with confidence scores
     """
     return _get_role_prediction_payload(quarters_ahead)
-
-
-@app.post("/query")
-async def query_market(question: str):
-    """Ask a natural language question about the job market.
-    
-    Args:
-        question: Natural language question
-        
-    Returns:
-        Answer to the question
-    """
-    analysis = _ensure_skill_analysis_loaded()
-    anomalies = salary_detector.detect_anomalies(_serialize_jobs(pipeline.jobs))
-    role_prediction = _get_role_prediction_payload(quarters_ahead=1)
-    stats = pipeline.get_statistics()
-    parsed_query = query_processor.process_query(question)
-    subject = parsed_query["query"].get("subject") or ""
-
-    return {
-        "question": question,
-        "parsed_query": parsed_query,
-        "answer": query_processor.answer_question(
-            question,
-            context={
-                "summary": f"Current dataset covers {stats['total_jobs']} jobs across {stats['locations']} locations.",
-                "total_jobs": stats["total_jobs"],
-                "remote_jobs": sum(
-                    1
-                    for job in _serialize_jobs(pipeline.jobs)
-                    if str(job.get("remote_status", "")).lower() == "remote"
-                ),
-                "top_skills": analysis.get("top_skills", []),
-                "anomalies": anomalies,
-                "salary_range": salary_detector.get_salary_range(subject) if subject else {},
-                "predicted_roles": role_prediction["predicted_roles"] if role_prediction else [],
-            },
-        ),
-        "status": "ready",
-    }
-
-
-@app.post("/agent/explain")
-async def explain_with_agent(question: str, job_id: str = None):
-    """Ask the agent to explain an analytics or model output with evidence."""
-    _ensure_pipeline_jobs_loaded()
-    if not pipeline.jobs:
-        raise HTTPException(status_code=400, detail="No job data available.")
-
-    result = market_agent.answer(
-        question=question,
-        jobs=_serialize_jobs(pipeline.jobs),
-        job_id=job_id,
-    )
-    return {
-        "question": question,
-        **result,
-    }
 
 
 @app.get("/salary/anomalies")
