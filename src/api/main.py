@@ -10,8 +10,11 @@ from uuid import uuid4
 
 import pandas as pd
 from fastapi import FastAPI, Header, HTTPException, Query, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from pandera.errors import SchemaError, SchemaErrors
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlalchemy import text
 
 from config.settings import (
@@ -26,12 +29,14 @@ from src.api.schemas import (
     DataGovernanceResponse,
     EngineWorkflowResponse,
     EscoNormalizeResponse,
+    ErrorResponse,
     IngestionBatchResponse,
     JobDetailResponse,
     JobSearchResponse,
     SearchFacetsResponse,
     SimilarJobsResponse,
 )
+from src.api.errors import api_error, error_response, http_error_handler, validation_error_handler
 from src.api.services.job_search import JobSearchService
 from src.analytics.salary_analysis import SalaryAnomalyDetector
 from src.database import init_database
@@ -59,8 +64,19 @@ except Exception as e:
 app = FastAPI(
     title="German Job Market Intelligence Platform",
     description="Analyze German tech job trends, skill demand, salaries, and role forecasts",
-    version="0.1.0"
+    version="0.1.0",
+    responses={
+        400: {"model": ErrorResponse},
+        403: {"model": ErrorResponse},
+        404: {"model": ErrorResponse},
+        422: {"model": ErrorResponse},
+        429: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+        503: {"model": ErrorResponse},
+    },
 )
+app.add_exception_handler(StarletteHTTPException, http_error_handler)
+app.add_exception_handler(RequestValidationError, validation_error_handler)
 
 RATE_LIMIT_EXEMPT_PATHS = {"/health", "/ready"}
 REQUEST_ID_HEADER = "X-Request-ID"
@@ -110,9 +126,17 @@ def _require_admin_token(token: str | None) -> None:
     """Protect ingestion endpoints from public discovery and unauthenticated use."""
     configured_token = settings.ingestion_api_token.strip()
     if not configured_token:
-        raise HTTPException(status_code=404, detail="Not found.")
+        raise api_error(
+            status_code=404,
+            error="not_found",
+            message="Not found.",
+        )
     if token != configured_token:
-        raise HTTPException(status_code=403, detail="Forbidden.")
+        raise api_error(
+            status_code=403,
+            error="forbidden",
+            message="Forbidden.",
+        )
 
 
 cors_origins = _configured_cors_origins()
@@ -144,9 +168,11 @@ async def public_backend_guardrails(request: Request, call_next):
     if _is_rate_limited(client_ip, path):
         duration_ms = round((monotonic() - started_at) * 1000, 2)
         request_log.bind(duration_ms=duration_ms, status_code=429).warning("Rate limit exceeded.")
-        return JSONResponse(
+        return error_response(
             status_code=429,
-            content={"detail": "Rate limit exceeded."},
+            error="rate_limit_exceeded",
+            message="Rate limit exceeded.",
+            details={"request_id": request_id},
             headers={REQUEST_ID_HEADER: request_id},
         )
 
@@ -162,9 +188,11 @@ async def public_backend_guardrails(request: Request, call_next):
             client_ip=client_ip,
             duration_ms=duration_ms,
         ).exception("Unhandled request error: {}", str(exc))
-        return JSONResponse(
+        return error_response(
             status_code=500,
-            content={"detail": "Internal server error.", "request_id": request_id},
+            error="internal_error",
+            message="Internal server error.",
+            details={"request_id": request_id},
             headers={REQUEST_ID_HEADER: request_id},
         )
 
@@ -230,7 +258,11 @@ def _get_job_repository() -> JobPostingRepository | None:
 def _get_ingestion_service() -> IngestionService:
     """Return the repository-backed ingestion service for protected fetches."""
     if not _job_repository:
-        raise HTTPException(status_code=503, detail="Job repository is not available.")
+        raise api_error(
+            status_code=503,
+            error="repository_unavailable",
+            message="Job repository is not available.",
+        )
     return IngestionService(providers=pipeline.providers, repository=_job_repository)
 
 
@@ -238,7 +270,11 @@ def _ensure_skill_analysis_loaded() -> dict:
     """Ensure jobs and skill analysis are available for read endpoints."""
     _ensure_pipeline_jobs_loaded()
     if not pipeline.jobs:
-        raise HTTPException(status_code=400, detail="No job data available.")
+        raise api_error(
+            status_code=400,
+            error="job_data_unavailable",
+            message="No job data available.",
+        )
     job_dicts = _serialize_jobs(pipeline.jobs)
     if not analyzer.skill_trends:
         analysis = analyzer.analyze_jobs(job_dicts)
@@ -252,7 +288,11 @@ def _ensure_role_predictor_trained() -> None:
     if role_predictor.model is not None:
         return
     if not TRAINING_DATA_PATH.exists():
-        raise HTTPException(status_code=500, detail="Training dataset not found.")
+        raise api_error(
+            status_code=500,
+            error="training_data_missing",
+            message="Training dataset not found.",
+        )
     training_frame = pd.read_csv(TRAINING_DATA_PATH)
     role_predictor.train(training_frame.to_dict(orient="records"))
 
@@ -279,7 +319,11 @@ def _get_role_prediction_payload(quarters_ahead: int) -> dict:
     _ensure_pipeline_jobs_loaded()
     _ensure_role_predictor_trained()
     if not pipeline.jobs:
-        raise HTTPException(status_code=400, detail="No job data available for role prediction.")
+        raise api_error(
+            status_code=400,
+            error="job_data_unavailable",
+            message="No job data available for role prediction.",
+        )
 
     predictions = role_predictor.forecast_role_demand(
         _serialize_jobs(pipeline.jobs),
@@ -870,7 +914,12 @@ async def get_job_detail(job_id: str):
     """Return full job detail for a result page."""
     job = job_search_service.find_job_by_id(job_id)
     if not job:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+        raise api_error(
+            status_code=404,
+            error="job_not_found",
+            message=f"Job '{job_id}' not found.",
+            details={"job_id": job_id},
+        )
     return job_search_service.build_job_detail(job)
 
 
@@ -882,7 +931,12 @@ async def get_similar_jobs(
     """Return jobs related to the selected posting."""
     job = job_search_service.find_job_by_id(job_id)
     if not job:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+        raise api_error(
+            status_code=404,
+            error="job_not_found",
+            message=f"Job '{job_id}' not found.",
+            details={"job_id": job_id},
+        )
     return job_search_service.build_similar_jobs(job, limit=limit)
 
 
@@ -894,14 +948,20 @@ async def apply_to_job(
     """Send a candidate to the best legal apply/source page for a job."""
     job = job_search_service.find_job_by_id(job_id)
     if not job:
-        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+        raise api_error(
+            status_code=404,
+            error="job_not_found",
+            message=f"Job '{job_id}' not found.",
+            details={"job_id": job_id},
+        )
 
     handoff = job_search_service.build_apply_handoff(job)
     if not handoff["source_allowed"]:
-        raise HTTPException(
+        raise api_error(
             status_code=403,
-            detail={
-                "message": "Apply handoff blocked because the job source is not approved.",
+            error="source_policy_violation",
+            message="Apply handoff blocked because the job source is not approved.",
+            details={
                 "job_id": job_id,
                 "source": handoff["source"],
             },
@@ -998,10 +1058,11 @@ async def fetch_data(
         })
         return summary.to_dict()
     except IngestionPolicyError as exc:
-        raise HTTPException(
+        raise api_error(
             status_code=403,
-            detail={
-                "message": "Live ingestion blocked by data-source governance.",
+            error="source_policy_violation",
+            message="Live ingestion blocked by data-source governance.",
+            details={
                 "blocked_sources": [
                     {
                         "source": decision.source,
@@ -1018,11 +1079,23 @@ async def fetch_data(
                 ],
             },
         ) from exc
+    except (SchemaError, SchemaErrors) as exc:
+        raise api_error(
+            status_code=422,
+            error="validation_failed",
+            message="Ingested job data failed validation.",
+            details={"validation_error": str(exc)},
+        ) from exc
     except HTTPException:
         raise
     except Exception as e:
         event_logger("ingestion_api_failed").exception("Data fetch error: {}", str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        raise api_error(
+            status_code=500,
+            error="ingestion_failed",
+            message="Data fetch failed.",
+            details={"reason": str(e)},
+        )
 
 
 @app.post("/analyze/skills")
@@ -1043,7 +1116,11 @@ async def analyze_skill_demand(
         analysis = _ensure_skill_analysis_loaded()
         
         if not analysis:
-            raise HTTPException(status_code=500, detail="Analysis failed")
+            raise api_error(
+                status_code=500,
+                error="analysis_failed",
+                message="Analysis failed.",
+            )
         
         return {
             "total_jobs": analysis.get("total_jobs", 0),
@@ -1056,7 +1133,12 @@ async def analyze_skill_demand(
         raise
     except Exception as e:
         event_logger("skill_analysis_failed").exception("Skill analysis error: {}", str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        raise api_error(
+            status_code=500,
+            error="analysis_failed",
+            message="Skill analysis failed.",
+            details={"reason": str(e)},
+        )
 
 
 @app.get("/trends/skills")
@@ -1098,9 +1180,11 @@ async def get_skill_salary_premium(skill_name: str):
     premium = analyzer.get_salary_premium(skill_name)
     
     if not premium:
-        raise HTTPException(
+        raise api_error(
             status_code=404,
-            detail=f"Skill '{skill_name}' not found or has no salary data"
+            error="skill_not_found",
+            message=f"Skill '{skill_name}' not found or has no salary data.",
+            details={"skill": skill_name},
         )
     
     return premium

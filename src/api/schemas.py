@@ -14,6 +14,14 @@ class ApiModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class ErrorResponse(ApiModel):
+    """Standard error response contract."""
+
+    error: str
+    message: str
+    details: dict = Field(default_factory=dict)
+
+
 class FacetCount(ApiModel):
     """A filter value and its result count."""
 

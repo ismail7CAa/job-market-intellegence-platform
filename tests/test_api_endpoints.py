@@ -211,8 +211,9 @@ class TestApiEndpoints:
 
         assert response.status_code == 403
         payload = response.json()
-        assert payload["detail"]["message"] == "Live ingestion blocked by data-source governance."
-        assert payload["detail"]["blocked_sources"][0]["source"] == "linkedin"
+        assert payload["error"] == "source_policy_violation"
+        assert payload["message"] == "Live ingestion blocked by data-source governance."
+        assert payload["details"]["blocked_sources"][0]["source"] == "linkedin"
 
     def test_data_fetch_with_admin_token_uses_repository_ingestion(self, monkeypatch):
         """Protected fetch should return a repository-backed ingestion batch summary."""
@@ -234,6 +235,24 @@ class TestApiEndpoints:
         assert payload["active_jobs_after"] >= 120
         assert payload["provider_results"][0]["source"] == "legal_demo_csv"
 
+    def test_data_fetch_reports_repository_unavailable(self, monkeypatch):
+        """Protected fetch should standardize repository availability failures."""
+        monkeypatch.setattr(api_main.settings, "ingestion_api_token", "secret-token")
+        monkeypatch.setattr(api_main, "_job_repository", None)
+
+        response = client.post(
+            "/data/fetch",
+            params={"sources": ["legal_demo_csv"], "keywords": ["Nurse"], "limit": 10},
+            headers={"X-Admin-Token": "secret-token"},
+        )
+
+        assert response.status_code == 503
+        assert response.json() == {
+            "error": "repository_unavailable",
+            "message": "Job repository is not available.",
+            "details": {},
+        }
+
     def test_engine_workflow_endpoint_documents_search_process(self):
         """Workflow endpoint should describe the platform engine steps."""
         response = client.get("/engine/workflow")
@@ -252,6 +271,7 @@ class TestApiEndpoints:
         assert "JobSearchResponse" in payload["components"]["schemas"]
         assert "JobDetailResponse" in payload["components"]["schemas"]
         assert "ApplyHandoff" in payload["components"]["schemas"]
+        assert "ErrorResponse" in payload["components"]["schemas"]
         assert (
             payload["paths"]["/jobs/search"]["get"]["responses"]["200"]["content"]
             ["application/json"]["schema"]["$ref"]
@@ -303,7 +323,9 @@ class TestApiEndpoints:
         assert first.status_code == 200
         assert second.status_code == 429
         assert second.headers["x-request-id"]
-        assert second.json()["detail"] == "Rate limit exceeded."
+        assert second.json()["error"] == "rate_limit_exceeded"
+        assert second.json()["message"] == "Rate limit exceeded."
+        assert second.json()["details"]["request_id"]
 
     def test_request_id_is_returned_and_can_be_supplied_by_callers(self):
         """Responses should carry a request id for log correlation."""
@@ -331,6 +353,28 @@ class TestApiEndpoints:
         assert response.status_code == 500
         assert response.headers["x-request-id"] == "error-request-id"
         assert response.json() == {
-            "detail": "Internal server error.",
-            "request_id": "error-request-id",
+            "error": "internal_error",
+            "message": "Internal server error.",
+            "details": {"request_id": "error-request-id"},
         }
+
+    def test_missing_job_uses_standard_error_contract(self):
+        """Missing job lookups should use the stable frontend error shape."""
+        response = client.get("/jobs/not-a-real-job")
+
+        assert response.status_code == 404
+        assert response.json() == {
+            "error": "job_not_found",
+            "message": "Job 'not-a-real-job' not found.",
+            "details": {"job_id": "not-a-real-job"},
+        }
+
+    def test_request_validation_uses_standard_error_contract(self):
+        """Query validation failures should use the stable frontend error shape."""
+        response = client.get("/jobs/search", params={"page": 0})
+
+        assert response.status_code == 422
+        payload = response.json()
+        assert payload["error"] == "validation_failed"
+        assert payload["message"] == "Request validation failed."
+        assert payload["details"]["errors"]
