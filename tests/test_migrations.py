@@ -25,16 +25,17 @@ def test_alembic_upgrade_head_creates_provider_ready_schema(tmp_path):
 
     engine = create_engine(database_url)
     inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
     columns = {column["name"] for column in inspector.get_columns("job_postings")}
     indexes = {index["name"] for index in inspector.get_indexes("job_postings")}
     unique_constraints = {
         constraint["name"]
         for constraint in inspector.get_unique_constraints("job_postings")
     }
+    batch_columns = {column["name"] for column in inspector.get_columns("ingestion_batches")}
+    batch_indexes = {index["name"] for index in inspector.get_indexes("ingestion_batches")}
 
-    assert {"job_postings", "skills", "skill_trends", "salary_data"}.issubset(
-        set(inspector.get_table_names())
-    )
+    assert {"job_postings", "skills", "skill_trends", "salary_data", "ingestion_batches"}.issubset(table_names)
     assert {
         "source_posting_id",
         "application_url",
@@ -63,4 +64,19 @@ def test_alembic_upgrade_head_creates_provider_ready_schema(tmp_path):
         "idx_job_ingestion_batch_id",
         "idx_job_is_expired",
     }.issubset(indexes)
+    assert {
+        "id",
+        "source",
+        "status",
+        "fetched_count",
+        "saved_count",
+        "expired_count",
+        "started_at",
+        "finished_at",
+        "error_message",
+    }.issubset(batch_columns)
+    assert {
+        "idx_ingestion_batch_status",
+        "idx_ingestion_batch_started_at",
+    }.issubset(batch_indexes)
     engine.dispose()

@@ -78,6 +78,20 @@ CREATE TABLE IF NOT EXISTS salary_data (
   updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS ingestion_batches (
+  id TEXT PRIMARY KEY,
+  source TEXT NOT NULL,
+  status VARCHAR(50) NOT NULL,
+  fetched_count INTEGER DEFAULT 0,
+  saved_count INTEGER DEFAULT 0,
+  expired_count INTEGER DEFAULT 0,
+  started_at TIMESTAMPTZ NOT NULL,
+  finished_at TIMESTAMPTZ,
+  error_message TEXT,
+  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_job_title ON job_postings(title);
 CREATE INDEX IF NOT EXISTS idx_job_company ON job_postings(company);
 CREATE INDEX IF NOT EXISTS idx_job_location ON job_postings(location);
@@ -99,3 +113,5 @@ CREATE INDEX IF NOT EXISTS idx_skill_name ON skills(name);
 CREATE INDEX IF NOT EXISTS idx_skill_trends_month ON skill_trends(month);
 CREATE INDEX IF NOT EXISTS idx_salary_role ON salary_data(role);
 CREATE INDEX IF NOT EXISTS idx_salary_location ON salary_data(location);
+CREATE INDEX IF NOT EXISTS idx_ingestion_batch_status ON ingestion_batches(status);
+CREATE INDEX IF NOT EXISTS idx_ingestion_batch_started_at ON ingestion_batches(started_at);

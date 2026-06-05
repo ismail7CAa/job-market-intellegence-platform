@@ -94,6 +94,23 @@ class Database:
             for column, column_type in expected_columns.items():
                 if column not in existing:
                     connection.execute(text(f"ALTER TABLE job_postings ADD COLUMN {column} {column_type}"))
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS ingestion_batches (
+                    id VARCHAR PRIMARY KEY,
+                    source TEXT NOT NULL,
+                    status VARCHAR(50) NOT NULL,
+                    fetched_count INTEGER DEFAULT 0,
+                    saved_count INTEGER DEFAULT 0,
+                    expired_count INTEGER DEFAULT 0,
+                    started_at DATETIME NOT NULL,
+                    finished_at DATETIME,
+                    error_message TEXT,
+                    created_at DATETIME,
+                    updated_at DATETIME
+                )
+            """))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_ingestion_batch_status ON ingestion_batches(status)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS idx_ingestion_batch_started_at ON ingestion_batches(started_at)"))
     
     def drop_tables(self):
         """Drop all database tables."""

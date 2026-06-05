@@ -9,7 +9,7 @@ from typing import Any, Iterable, List, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc, func, or_
 
-from .models import Skill, SkillTrend, SalaryData, JobPosting
+from .models import Skill, SkillTrend, SalaryData, JobPosting, IngestionBatch
 
 
 class SkillRepository:
@@ -250,6 +250,134 @@ class SalaryRepository:
         if location:
             query = query.filter(SalaryData.location == location)
         return query.order_by(desc(SalaryData.median_salary)).limit(limit).all()
+
+
+class IngestionBatchRepository:
+    """Repository for auditable ingestion batch metadata."""
+
+    def __init__(self, session: Session):
+        self.session = session
+
+    @staticmethod
+    def _serialize_source(source: str | list[str]) -> str:
+        if isinstance(source, list):
+            return json.dumps(source)
+        return str(source)
+
+    @staticmethod
+    def _deserialize_source(source: str | None) -> str | list[str] | None:
+        if source in (None, ""):
+            return source
+        try:
+            parsed = json.loads(str(source))
+            if isinstance(parsed, list):
+                return [str(item) for item in parsed]
+        except json.JSONDecodeError:
+            pass
+        return source
+
+    @classmethod
+    def to_dict(cls, batch: IngestionBatch) -> dict:
+        """Serialize an ingestion batch row."""
+        return {
+            "id": batch.id,
+            "source": cls._deserialize_source(batch.source),
+            "status": batch.status,
+            "fetched_count": batch.fetched_count or 0,
+            "saved_count": batch.saved_count or 0,
+            "expired_count": batch.expired_count or 0,
+            "started_at": batch.started_at,
+            "finished_at": batch.finished_at,
+            "error_message": batch.error_message,
+            "created_at": batch.created_at,
+            "updated_at": batch.updated_at,
+        }
+
+    def start_batch(
+        self,
+        batch_id: str,
+        source: str | list[str],
+        started_at: datetime,
+        status: str = "running",
+    ) -> IngestionBatch:
+        """Create an ingestion batch audit row."""
+        batch = IngestionBatch(
+            id=batch_id,
+            source=self._serialize_source(source),
+            status=status,
+            fetched_count=0,
+            saved_count=0,
+            expired_count=0,
+            started_at=started_at,
+        )
+        self.session.add(batch)
+        self.session.commit()
+        self.session.refresh(batch)
+        return batch
+
+    def complete_batch(
+        self,
+        batch_id: str,
+        status: str,
+        fetched_count: int,
+        saved_count: int,
+        expired_count: int,
+        finished_at: datetime,
+        error_message: str | None = None,
+    ) -> IngestionBatch | None:
+        """Update an ingestion batch audit row with terminal counts."""
+        batch = self.session.get(IngestionBatch, batch_id)
+        if not batch:
+            return None
+        batch.status = status
+        batch.fetched_count = fetched_count
+        batch.saved_count = saved_count
+        batch.expired_count = expired_count
+        batch.finished_at = finished_at
+        batch.error_message = error_message
+        batch.updated_at = datetime.now(UTC)
+        self.session.commit()
+        self.session.refresh(batch)
+        return batch
+
+    def fail_batch(
+        self,
+        batch_id: str,
+        error_message: str,
+        finished_at: datetime | None = None,
+    ) -> IngestionBatch | None:
+        """Mark an ingestion batch failed."""
+        return self.complete_batch(
+            batch_id=batch_id,
+            status="failed",
+            fetched_count=0,
+            saved_count=0,
+            expired_count=0,
+            finished_at=finished_at or datetime.now(UTC),
+            error_message=error_message,
+        )
+
+    def get_batch(self, batch_id: str) -> IngestionBatch | None:
+        """Fetch one ingestion batch row."""
+        return self.session.get(IngestionBatch, batch_id)
+
+    def get_batch_dict(self, batch_id: str) -> dict | None:
+        """Fetch one ingestion batch as a dictionary."""
+        batch = self.get_batch(batch_id)
+        return self.to_dict(batch) if batch else None
+
+    def list_batches(self, limit: int = 20) -> list[IngestionBatch]:
+        """Return recent ingestion batches."""
+        return (
+            self.session.query(IngestionBatch)
+            .order_by(desc(IngestionBatch.started_at))
+            .limit(limit)
+            .all()
+        )
+
+    def list_batch_dicts(self, limit: int = 20) -> list[dict]:
+        """Return recent ingestion batches as dictionaries."""
+        return [self.to_dict(batch) for batch in self.list_batches(limit=limit)]
 
 
 class JobPostingRepository:

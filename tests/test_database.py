@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 
 from src.database.models import Base, Skill, SkillTrend, SalaryData, JobPosting
 from src.database.repository import (
-    SkillRepository, SkillTrendRepository, SalaryRepository, JobPostingRepository
+    SkillRepository, SkillTrendRepository, SalaryRepository, IngestionBatchRepository, JobPostingRepository
 )
 
 
@@ -382,6 +382,53 @@ class TestJobPostingRepository:
         similar_jobs = repo.query_similar_job_dicts("target")
 
         assert [job["id"] for job in similar_jobs] == ["similar"]
+
+
+class TestIngestionBatchRepository:
+    """Test ingestion batch audit repository."""
+
+    def test_create_and_complete_ingestion_batch(self, db_session):
+        """Batch rows should persist lifecycle counts."""
+        repo = IngestionBatchRepository(db_session)
+        started_at = datetime.now(UTC)
+
+        repo.start_batch(
+            batch_id="batch_1",
+            source=["legal_demo_csv"],
+            started_at=started_at,
+        )
+        repo.complete_batch(
+            batch_id="batch_1",
+            status="completed",
+            fetched_count=5,
+            saved_count=4,
+            expired_count=1,
+            finished_at=datetime.now(UTC),
+        )
+
+        batch = repo.get_batch_dict("batch_1")
+        assert batch["source"] == ["legal_demo_csv"]
+        assert batch["status"] == "completed"
+        assert batch["fetched_count"] == 5
+        assert batch["saved_count"] == 4
+        assert batch["expired_count"] == 1
+        assert batch["finished_at"] is not None
+        assert batch["error_message"] is None
+
+    def test_fail_ingestion_batch_records_error_message(self, db_session):
+        """Failed batch rows should keep the operator-facing error."""
+        repo = IngestionBatchRepository(db_session)
+        repo.start_batch(
+            batch_id="batch_failed",
+            source=["linkedin"],
+            started_at=datetime.now(UTC),
+        )
+
+        repo.fail_batch("batch_failed", "Source is blocked.")
+
+        batch = repo.get_batch_dict("batch_failed")
+        assert batch["status"] == "failed"
+        assert batch["error_message"] == "Source is blocked."
 
 
 if __name__ == "__main__":

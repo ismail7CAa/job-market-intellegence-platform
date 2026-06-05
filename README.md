@@ -187,6 +187,7 @@ Protected/internal routes:
 
 - `/data/fetch`: hidden from OpenAPI and blocked unless `INGESTION_API_TOKEN` is configured and sent as `X-Admin-Token`; source governance still rejects unapproved sources even after authentication
 - Protected ingestion runs through `IngestionService`: provider fetch, source-governance check, Pandera validation, repository save/dedupe, expiry marking, and a batch summary.
+- Ingestion runs are persisted in `ingestion_batches` with source, status, counts, timestamps, and error messages for auditability.
 
 Public backend guardrails:
 

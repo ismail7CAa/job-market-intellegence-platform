@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.orm import declarative_base
 
@@ -77,6 +77,31 @@ class SalaryData(Base):
     def __repr__(self):
         return f"<SalaryData(role='{self.role}', location='{self.location}', " \
                f"median=${self.median_salary})>"
+
+
+class IngestionBatch(Base):
+    """Auditable ingestion batch metadata."""
+
+    __tablename__ = "ingestion_batches"
+
+    id = Column(String, primary_key=True)
+    source = Column(Text, nullable=False)
+    status = Column(String(50), nullable=False, index=True)
+    fetched_count = Column(Integer, default=0)
+    saved_count = Column(Integer, default=0)
+    expired_count = Column(Integer, default=0)
+    started_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    finished_at = Column(DateTime(timezone=True), index=True)
+    error_message = Column(Text)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
+
+    def __repr__(self):
+        return f"<IngestionBatch(id='{self.id}', status='{self.status}')>"
 
 
 class JobPosting(Base):
