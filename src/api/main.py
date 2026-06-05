@@ -27,6 +27,7 @@ from src.api.schemas import (
     DataGovernanceResponse,
     EngineWorkflowResponse,
     EscoNormalizeResponse,
+    IngestionBatchResponse,
     JobDetailResponse,
     JobSearchResponse,
     SearchFacetsResponse,
@@ -40,7 +41,7 @@ from src.analytics.skill_demand import SkillDemandAnalyzer
 from src.data_pipeline.pipeline import DataPipeline
 from src.data_pipeline.models import JobPosting
 from src.data_pipeline.providers import JobSearchRequest, LocalCsvJobProvider
-from src.data_pipeline.source_policy import evaluate_source, evaluate_sources
+from src.data_pipeline.ingestion_service import IngestionPolicyError, IngestionService
 from src.market_context import EscoNormalizer
 from src.prediction.role_predictor import RolePredictor
 
@@ -203,6 +204,13 @@ def _get_job_repository() -> JobPostingRepository | None:
     """Return the repository used by the job search service."""
     _ensure_pipeline_jobs_loaded()
     return _job_repository
+
+
+def _get_ingestion_service() -> IngestionService:
+    """Return the repository-backed ingestion service for protected fetches."""
+    if not _job_repository:
+        raise HTTPException(status_code=503, detail="Job repository is not available.")
+    return IngestionService(providers=pipeline.providers, repository=_job_repository)
 
 
 def _ensure_skill_analysis_loaded() -> dict:
@@ -943,7 +951,7 @@ async def readiness_check():
     )
 
 
-@app.post("/data/fetch", include_in_schema=False)
+@app.post("/data/fetch", response_model=IngestionBatchResponse, include_in_schema=False)
 async def fetch_data(
     sources: list[str] = Query(settings.default_sources),
     keywords: list[str] = Query(settings.default_keywords),
@@ -953,44 +961,42 @@ async def fetch_data(
     """Fetch job data from configured sources behind an admin token."""
     _require_admin_token(admin_token)
     try:
-        decisions = evaluate_sources(sources)
-        blocked = [decision for decision in decisions if not decision.allowed]
-        if blocked:
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "message": "Live ingestion blocked by data-source governance.",
-                    "blocked_sources": [
-                        {
-                            "source": decision.source,
-                            "reason": decision.reason,
-                            "required_action": decision.required_action,
-                        }
-                        for decision in blocked
-                    ],
-                    "allowed_sources": [
-                        "legal_demo_csv",
-                        "licensed_provider",
-                        "company_feed",
-                        "official_api",
-                    ],
-                },
-            )
-
-        logger.info(f"Fetching data from {sources}")
-        jobs = pipeline.run(
+        summary = _get_ingestion_service().ingest(
             sources=sources,
             keywords=keywords,
-            limit_per_source=limit
+            limit_per_source=limit,
         )
-
-        stats = pipeline.get_statistics()
-
-        return {
-            "success": True,
-            "total_jobs": len(jobs),
-            "statistics": stats
-        }
+        pipeline.processing_log.append({
+            "source": "repository_ingestion",
+            "ingestion_batch_id": summary.ingestion_batch_id,
+            "sources": summary.sources,
+            "fetched_count": summary.fetched_count,
+            "saved_count": summary.saved_count,
+            "expired_count": summary.expired_count,
+            "timestamp": summary.finished_at.isoformat(),
+        })
+        return summary.to_dict()
+    except IngestionPolicyError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "message": "Live ingestion blocked by data-source governance.",
+                "blocked_sources": [
+                    {
+                        "source": decision.source,
+                        "reason": decision.reason,
+                        "required_action": decision.required_action,
+                    }
+                    for decision in exc.blocked_sources
+                ],
+                "allowed_sources": [
+                    "legal_demo_csv",
+                    "licensed_provider",
+                    "company_feed",
+                    "official_api",
+                ],
+            },
+        ) from exc
     except HTTPException:
         raise
     except Exception as e:

@@ -144,6 +144,7 @@ The backend was changed to enforce this strategy:
 - CORS now defaults to explicit local frontend origins rather than a wildcard.
 - Public requests now pass through basic request logging and a per-client rate limiter.
 - `/health` is a cheap liveness probe, while `/ready` checks database and loaded job-data readiness.
+- Added `IngestionService` to orchestrate provider fetches into the repository with source governance, validation, deduplication, expiry marking, and batch summaries.
 
 ## Problems Found During Backend Hardening
 
@@ -223,7 +224,34 @@ Not chosen yet:
 - Redis-backed distributed rate limiting. That becomes necessary when the API scales beyond one instance.
 - API gateway or WAF rules. Those are useful production controls, but they add infrastructure before the single-instance backend contract is stable.
 
-### 5. Expired listings needed explicit state
+### 5. Ingestion needed one orchestration path
+
+After the provider interface and repository were added, ingestion still risked splitting across too many places. `DataPipeline` could fetch provider records and optionally publish to Kafka. `/data/fetch` could trigger fetching. `JobPostingRepository` could persist records. But there was no single service responsible for turning an approved provider refresh into the searchable repository state.
+
+Problems:
+
+- the protected API route was starting to contain ingestion workflow logic
+- provider adapters, validation, repository persistence, and expiry marking were not tied together as one backend process
+- future scheduler or CLI ingestion would have duplicated route logic
+- ingestion results needed a stable batch summary for logs, tests, and admin visibility
+
+Decision:
+
+- Add `IngestionService`.
+- Run source governance before fetching.
+- Fetch through `JobPostingProvider`.
+- Attach an `ingestion_batch_id` and `last_seen_at`.
+- Validate provider results with the Pandera job-posting schema before persistence.
+- Save through `JobPostingRepository`, preserving deduplication by `source + source_posting_id`.
+- Mark expired jobs after refresh when requested.
+- Return a batch summary with fetched, saved, expired, active-job, provider, and timing fields.
+
+Not chosen:
+
+- Put this logic inside `/data/fetch`. That would make the API route too responsible and harder to reuse from a scheduler.
+- Put this logic inside `DataPipeline`. That class still owns broader pipeline concerns such as CSV exports and optional Kafka publishing; repository refresh is now a product-serving concern.
+
+### 6. Expired listings needed explicit state
 
 `expires_at` alone tells us when a job should no longer appear, but user-facing queries need a simple active/expired filter.
 
@@ -240,7 +268,7 @@ Decision:
 - Exclude expired jobs from default search, detail, facets, and similar-job queries.
 - Do not auto-expire the local seed dataset on app startup, because the portfolio seed has fixed historical dates and would otherwise disappear during demos. Live provider refresh jobs can call `mark_expired` after each ingestion run.
 
-### 6. Similar jobs needed persisted matching signals
+### 7. Similar jobs needed persisted matching signals
 
 The existing similarity logic used role type, location, remote status, and required skills. The SQL model did not persist `required_skills`, so moving search into the repository would have dropped an important matching signal.
 
@@ -249,7 +277,7 @@ Decision:
 - Persist `required_skills` as compact JSON text for the repository stage.
 - Keep a future normalized `job_skills` relation available for deeper analytics and ESCO enrichment.
 
-### 7. Local SQLite schemas drifted from the SQLAlchemy model
+### 8. Local SQLite schemas drifted from the SQLAlchemy model
 
 Existing developer SQLite databases are not automatically changed by `create_all` when new columns are added. After adding provider-ready fields, older local databases could crash with missing-column errors.
 

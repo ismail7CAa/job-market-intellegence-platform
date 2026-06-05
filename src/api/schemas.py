@@ -235,6 +235,35 @@ class DataGovernanceResponse(ApiModel):
     candidate_live_sources: list[CandidateLiveSource]
 
 
+class ProviderIngestionResult(ApiModel):
+    """Ingestion summary for one provider."""
+
+    source: str
+    legal_basis: str | None = None
+    allowed: bool
+    fetched_count: int
+    saved_count: int
+    reason: str
+
+
+class IngestionBatchResponse(ApiModel):
+    """Response contract for protected repository-backed ingestion."""
+
+    status: Literal["completed"]
+    ingestion_batch_id: str
+    sources: list[str]
+    keywords: list[str]
+    limit_per_source: int
+    fetched_count: int
+    saved_count: int
+    expired_count: int
+    active_jobs_after: int
+    provider_results: list[ProviderIngestionResult]
+    started_at: datetime | str
+    finished_at: datetime | str
+    duration_seconds: float
+
+
 class EngineWorkflowStep(ApiModel):
     """One step in the backend engine workflow."""
 

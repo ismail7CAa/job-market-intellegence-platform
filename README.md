@@ -168,6 +168,7 @@ Operational routes are split by purpose:
 Protected/internal routes:
 
 - `/data/fetch`: hidden from OpenAPI and blocked unless `INGESTION_API_TOKEN` is configured and sent as `X-Admin-Token`; source governance still rejects unapproved sources even after authentication
+- Protected ingestion runs through `IngestionService`: provider fetch, source-governance check, Pandera validation, repository save/dedupe, expiry marking, and a batch summary.
 
 Public backend guardrails:
 
@@ -181,6 +182,7 @@ When live-ingested jobs are not loaded yet, the API can fall back to the local s
 
 - `src/data_pipeline/`: ingestion, source parsing, schema validation, Kafka publishing, local exports
 - `src/data_pipeline/providers.py`: provider adapter interface plus local demo CSV, legacy LinkedIn, and legacy Kaggle adapters
+- `src/data_pipeline/ingestion_service.py`: protected provider ingestion orchestration into the job repository
 - `src/analytics/`: skill demand, related skills, salary premium, and salary anomaly logic
 - `src/prediction/`: role prediction, feature engineering, evaluation, MLflow experiment workflow
 - `src/api/`: FastAPI application and endpoint orchestration
@@ -202,6 +204,7 @@ The public AWS EC2 deployment is currently stopped while the backend and data st
 - Add a custom domain and HTTPS in front of the EC2 deployment.
 - Split the current FastAPI-served dashboard into a dedicated React/Vite frontend if the UI grows beyond the v1 dashboard.
 - Add a scheduled orchestration path that runs ingestion, validation, dbt transformations, feature generation, and retraining as separate observable jobs.
+- Trigger `IngestionService` from a scheduled worker or admin CLI instead of only the protected API route.
 - Expand the legal synthetic German job dataset and add official Eurostat/BA/EURES market-context adapters.
 - Replace demo listings with a production-safe provider, explicit company feed, or official listings API only after terms are confirmed.
 - Add data drift checks and model monitoring around salary distributions, skill vocabulary shifts, and role-classification confidence.

@@ -214,6 +214,26 @@ class TestApiEndpoints:
         assert payload["detail"]["message"] == "Live ingestion blocked by data-source governance."
         assert payload["detail"]["blocked_sources"][0]["source"] == "linkedin"
 
+    def test_data_fetch_with_admin_token_uses_repository_ingestion(self, monkeypatch):
+        """Protected fetch should return a repository-backed ingestion batch summary."""
+        monkeypatch.setattr(api_main.settings, "ingestion_api_token", "secret-token")
+
+        response = client.post(
+            "/data/fetch",
+            params={"sources": ["legal_demo_csv"], "keywords": ["Nurse"], "limit": 10},
+            headers={"X-Admin-Token": "secret-token"},
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["status"] == "completed"
+        assert payload["ingestion_batch_id"].startswith("ing_")
+        assert payload["sources"] == ["legal_demo_csv"]
+        assert payload["fetched_count"] >= 1
+        assert payload["saved_count"] == payload["fetched_count"]
+        assert payload["active_jobs_after"] >= 120
+        assert payload["provider_results"][0]["source"] == "legal_demo_csv"
+
     def test_engine_workflow_endpoint_documents_search_process(self):
         """Workflow endpoint should describe the platform engine steps."""
         response = client.get("/engine/workflow")

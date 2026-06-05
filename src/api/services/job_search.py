@@ -865,12 +865,12 @@ class JobSearchService:
                 {
                     "step": "Legal source gate",
                     "task": "Allow only legal seed listings, licensed providers, official APIs, or explicit company feeds.",
-                    "current_backend": "/data/governance and protected /data/fetch",
+                    "current_backend": "/data/governance and protected /data/fetch through IngestionService",
                 },
                 {
                     "step": "Normalize jobs",
                     "task": "Convert source records into one JobPosting contract with role type, work mode, salary, source, and apply URL.",
-                    "current_backend": "JobPosting model plus Pandera dataframe boundary validation",
+                    "current_backend": "JobPostingProvider adapters, JobPosting model, and Pandera dataframe boundary validation",
                 },
                 {
                     "step": "Rank matching jobs",
@@ -889,7 +889,7 @@ class JobSearchService:
                 },
             ],
             "next_backend_increment": (
-                "Add a provider adapter interface and one approved live provider implementation "
-                "after the source terms are confirmed."
+                "Add one approved live provider implementation after source terms are confirmed, "
+                "then schedule IngestionService as a refresh job."
             ),
         }
