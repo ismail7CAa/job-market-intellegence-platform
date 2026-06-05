@@ -7,17 +7,17 @@
 
 The project originally had a broad job-market intelligence theme. A broad market can be useful eventually, but it makes the portfolio story less specific. The public demo benefits from a clearer market, currency, location set, and audience.
 
-Germany is a strong focus for this version because the demo can center on:
+Germany is a strong focus for this version because the product can center on:
 
-- German tech roles
+- German jobs across professions
 - German cities
 - EUR salaries
-- regional skill demand
-- a market context relevant to the user's job-search and portfolio goals
+- regional demand and salary context
+- a market context relevant to the user's job-search goals
 
 ## Decision
 
-Focus the public portfolio version on the German tech job market.
+Focus the public portfolio version on the German job market.
 
 This affects:
 
@@ -77,9 +77,9 @@ Germany gives the product a concrete audience and makes the demo easier to under
 
 Instead of presenting a vague global analytics platform, the project now says:
 
-> This is a job-market intelligence demo for German tech roles.
+> This is a job-search and market-intelligence platform for jobs in Germany.
 
-That specificity makes the data, API responses, and deployment page feel more intentional.
+That specificity makes the data, API responses, and deployment page feel more intentional while still allowing roles outside tech.
 
 ## Tradeoffs Accepted
 
@@ -104,4 +104,3 @@ Negative consequences:
 
 - global claims should be avoided
 - live-data expansion needs market-specific sourcing
-
