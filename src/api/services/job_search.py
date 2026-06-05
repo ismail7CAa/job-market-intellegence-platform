@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from collections import Counter
-from typing import Callable
+from typing import Callable, TYPE_CHECKING
 from urllib.parse import quote_plus
 
 from src.data_pipeline.source_policy import evaluate_source
+
+if TYPE_CHECKING:
+    from src.database.repository import JobPostingRepository
 
 
 class JobSearchService:
@@ -14,15 +17,25 @@ class JobSearchService:
 
     def __init__(
         self,
-        jobs_loader: Callable[[], list[dict]],
+        jobs_loader: Callable[[], list[dict]] | None = None,
+        repository_provider: Callable[[], "JobPostingRepository | None"] | None = None,
         currency: str = "EUR",
         region: str = "Germany",
     ):
-        self.jobs_loader = jobs_loader
+        self.jobs_loader = jobs_loader or (lambda: [])
+        self.repository_provider = repository_provider
         self.currency = currency
         self.region = region
 
+    def _repository(self) -> "JobPostingRepository | None":
+        if not self.repository_provider:
+            return None
+        return self.repository_provider()
+
     def _jobs(self) -> list[dict]:
+        repository = self._repository()
+        if repository:
+            return repository.list_job_dicts()
         return self.jobs_loader()
 
     @staticmethod
@@ -66,6 +79,8 @@ class JobSearchService:
     @staticmethod
     def infer_apply_url(job: dict) -> str:
         """Return a direct apply/source URL when one is available."""
+        if job.get("application_url"):
+            return str(job["application_url"])
         if job.get("url"):
             return str(job["url"])
         title = quote_plus(str(job.get("title", "")))
@@ -74,6 +89,9 @@ class JobSearchService:
 
     def find_job_by_id(self, job_id: str) -> dict | None:
         """Find a loaded job posting by id."""
+        repository = self._repository()
+        if repository:
+            return repository.get_job_dict_by_id(job_id)
         for job in self._jobs():
             if str(job.get("id")) == str(job_id):
                 return job
@@ -92,6 +110,8 @@ class JobSearchService:
             "company": job.get("company"),
             "location": job.get("location"),
             "apply_url": apply_url,
+            "application_url": job.get("application_url") or apply_url,
+            "company_career_url": job.get("company_career_url"),
             "apply_method": "external_redirect",
             "button_label": "Apply",
             "source": job.get("source"),
@@ -179,8 +199,23 @@ class JobSearchService:
             "posted_date": job.get("posted_date"),
             "source": job.get("source"),
             "source_legal_basis": job.get("source_legal_basis"),
+            "source_posting_id": job.get("source_posting_id"),
             "apply_url": self.infer_apply_url(job),
             "apply_endpoint": f"/jobs/{job.get('id')}/apply",
+            "application_url": job.get("application_url"),
+            "company_career_url": job.get("company_career_url"),
+            "country": job.get("country"),
+            "city": job.get("city"),
+            "federal_state": job.get("federal_state"),
+            "occupation_group": job.get("occupation_group"),
+            "experience_level": job.get("experience_level"),
+            "employment_type": job.get("employment_type"),
+            "salary_period": job.get("salary_period"),
+            "salary_is_estimated": job.get("salary_is_estimated", False),
+            "salary_confidence": job.get("salary_confidence"),
+            "expires_at": job.get("expires_at"),
+            "last_seen_at": job.get("last_seen_at"),
+            "is_expired": job.get("is_expired", False),
             **salary,
         }
 
@@ -226,6 +261,15 @@ class JobSearchService:
 
     def build_similar_jobs(self, job: dict, limit: int = 5) -> dict:
         """Return jobs similar to the selected posting."""
+        repository = self._repository()
+        if repository and job.get("id"):
+            similar_jobs = repository.query_similar_job_dicts(str(job["id"]), limit=limit)
+            return {
+                "job_id": job.get("id"),
+                "count": len(similar_jobs),
+                "jobs": [self.build_job_result(candidate) for candidate in similar_jobs],
+            }
+
         ranked = [
             (self._similarity_score(job, candidate), candidate)
             for candidate in self._jobs()
@@ -265,6 +309,24 @@ class JobSearchService:
 
     def build_search_facets(self) -> dict:
         """Return filter facets for the current job index."""
+        repository = self._repository()
+        if repository:
+            facets = repository.get_facets()
+            return {
+                "status": "ready",
+                "total_jobs": facets["total_jobs"],
+                "locations": self._counter_rows(facets["locations"]),
+                "role_types": self._counter_rows(facets["role_types"]),
+                "companies": self._counter_rows(facets["companies"]),
+                "work_modes": self._counter_rows(facets["work_modes"]),
+                "job_types": self._counter_rows(facets["job_types"]),
+                "salary_range": {
+                    "min": min(facets["salary_midpoints"]) if facets["salary_midpoints"] else None,
+                    "max": max(facets["salary_midpoints"]) if facets["salary_midpoints"] else None,
+                    "currency": self.currency,
+                },
+            }
+
         jobs = self._jobs()
         locations = Counter(job.get("location") for job in jobs if job.get("location"))
         role_types = Counter(job.get("role_type") for job in jobs if job.get("role_type"))
@@ -299,7 +361,16 @@ class JobSearchService:
         limit: int = 25,
     ) -> dict:
         """Search loaded German job data and summarize the result set."""
-        jobs = self._jobs()
+        repository = self._repository()
+        if repository:
+            jobs = repository.query_job_dicts(
+                query=query,
+                location=location,
+                work_mode=work_mode,
+                limit=max(limit, 100),
+            )
+        else:
+            jobs = self._jobs()
         matches = self.rank_jobs(jobs, query=query, location=location, work_mode=work_mode, limit=limit)
         result_jobs = [self.build_job_result(job) for job in matches]
         salaries = [
@@ -329,7 +400,7 @@ class JobSearchService:
                 "region": self.region,
                 "currency": self.currency,
                 "legal_position": (
-                    "This v1 uses local legal demo data. Production ingestion must use an official API, "
+                    "This v1 uses local legal seed listings. Production ingestion must use an official API, "
                     "a licensed job-data provider, or company feeds with explicit permission."
                 ),
                 "blocked_sources": ["unapproved scraping", "terms-of-service bypassing", "personal data collection without purpose"],
@@ -399,7 +470,7 @@ class JobSearchService:
                 },
                 {
                     "step": "Legal source gate",
-                    "task": "Allow only legal demo data, licensed providers, official APIs, or explicit company feeds.",
+                    "task": "Allow only legal seed listings, licensed providers, official APIs, or explicit company feeds.",
                     "current_backend": "/data/governance and protected /data/fetch",
                 },
                 {

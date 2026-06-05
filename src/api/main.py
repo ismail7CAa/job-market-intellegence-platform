@@ -32,6 +32,7 @@ from src.api.schemas import (
 from src.api.services.job_search import JobSearchService
 from src.analytics.salary_analysis import SalaryAnomalyDetector
 from src.database import init_database
+from src.database.repository import JobPostingRepository
 from src.analytics.skill_demand import SkillDemandAnalyzer
 from src.data_pipeline.pipeline import DataPipeline
 from src.data_pipeline.models import JobPosting
@@ -70,6 +71,8 @@ role_predictor = RolePredictor()
 salary_detector = SalaryAnomalyDetector()
 TRAINING_DATA_PATH = settings.training_data_path
 PRODUCTION_DATA_PATH = settings.production_data_path
+_job_repository = JobPostingRepository(_db.get_session()) if _db else None
+_repository_seeded = False
 
 
 def _serialize_jobs(jobs):
@@ -90,7 +93,11 @@ def _load_jobs_from_csv(dataset_path: Path) -> list[JobPosting]:
 
 def _ensure_pipeline_jobs_loaded() -> None:
     """Load local sample jobs when the in-memory pipeline is empty."""
+    global _repository_seeded
     if pipeline.jobs:
+        if _job_repository and not _repository_seeded:
+            _job_repository.save_jobs(pipeline.jobs)
+            _repository_seeded = True
         return
     if PRODUCTION_DATA_PATH.exists():
         pipeline.jobs = _load_jobs_from_csv(PRODUCTION_DATA_PATH)
@@ -99,6 +106,15 @@ def _ensure_pipeline_jobs_loaded() -> None:
             "job_count": len(pipeline.jobs),
             "timestamp": datetime.now().isoformat(),
         })
+        if _job_repository:
+            _job_repository.save_jobs(pipeline.jobs)
+            _repository_seeded = True
+
+
+def _get_job_repository() -> JobPostingRepository | None:
+    """Return the repository used by the job search service."""
+    _ensure_pipeline_jobs_loaded()
+    return _job_repository
 
 
 def _ensure_skill_analysis_loaded() -> dict:
@@ -127,11 +143,14 @@ def _ensure_role_predictor_trained() -> None:
 def _get_loaded_job_dicts() -> list[dict]:
     """Return serialized jobs after loading the local fallback dataset if needed."""
     _ensure_pipeline_jobs_loaded()
+    if _job_repository:
+        return _job_repository.list_job_dicts()
     return _serialize_jobs(pipeline.jobs)
 
 
 job_search_service = JobSearchService(
     jobs_loader=_get_loaded_job_dicts,
+    repository_provider=_get_job_repository,
     currency=settings.default_currency,
     region=settings.market_region,
 )

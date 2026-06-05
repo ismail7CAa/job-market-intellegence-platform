@@ -1,6 +1,6 @@
 """Tests for database models and repositories."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import create_engine
@@ -213,6 +213,175 @@ class TestJobPostingRepository:
         jobs = repo.get_jobs_by_title("Python")
         
         assert len(jobs) == 2
+
+    def test_save_jobs_deduplicates_by_source_posting_id(self, db_session):
+        """Test provider records update instead of duplicating."""
+        repo = JobPostingRepository(db_session)
+
+        repo.save_job({
+            "id": "internal_1",
+            "source": "licensed_provider",
+            "source_posting_id": "provider_123",
+            "title": "Nurse",
+            "company": "Care GmbH",
+            "location": "Berlin, Germany",
+            "job_type": "Full-time",
+            "description": "Patient care.",
+            "required_skills": ["Patient Care"],
+            "posted_date": datetime.now(UTC),
+        })
+        updated = repo.save_job({
+            "id": "different_internal_id",
+            "source": "licensed_provider",
+            "source_posting_id": "provider_123",
+            "title": "Senior Nurse",
+            "company": "Care GmbH",
+            "location": "Berlin, Germany",
+            "job_type": "Full-time",
+            "description": "Patient care and coordination.",
+            "required_skills": ["Patient Care", "Coordination"],
+            "posted_date": datetime.now(UTC),
+        })
+
+        jobs = repo.list_job_dicts()
+        assert len(jobs) == 1
+        assert updated.id == "internal_1"
+        assert jobs[0]["title"] == "Senior Nurse"
+        assert jobs[0]["required_skills"] == ["Patient Care", "Coordination"]
+
+    def test_query_jobs_by_filters_and_id(self, db_session):
+        """Test repository search filters and direct lookup."""
+        repo = JobPostingRepository(db_session)
+        repo.save_jobs([
+            {
+                "id": "job_berlin",
+                "source": "licensed_provider",
+                "source_posting_id": "berlin_1",
+                "title": "Marketing Manager",
+                "company": "Brand GmbH",
+                "location": "Berlin, Germany",
+                "city": "Berlin",
+                "remote_status": "hybrid",
+                "role_type": "Marketing",
+                "job_type": "Full-time",
+                "description": "Campaign planning and SEO.",
+                "required_skills": ["SEO"],
+                "posted_date": datetime.now(UTC),
+            },
+            {
+                "id": "job_munich",
+                "source": "licensed_provider",
+                "source_posting_id": "munich_1",
+                "title": "Accountant",
+                "company": "Finance GmbH",
+                "location": "Munich, Germany",
+                "city": "Munich",
+                "remote_status": "onsite",
+                "role_type": "Finance",
+                "job_type": "Full-time",
+                "description": "Accounting and reporting.",
+                "required_skills": ["DATEV"],
+                "posted_date": datetime.now(UTC),
+            },
+        ])
+
+        matches = repo.query_job_dicts(query="SEO", location="Berlin", work_mode="hybrid")
+        found = repo.get_job_dict_by_id("job_berlin")
+
+        assert [job["id"] for job in matches] == ["job_berlin"]
+        assert found["company"] == "Brand GmbH"
+
+    def test_mark_expired_hides_jobs_from_default_queries(self, db_session):
+        """Test expired listings are marked and excluded from active search."""
+        repo = JobPostingRepository(db_session)
+        repo.save_jobs([
+            {
+                "id": "expired_job",
+                "source": "licensed_provider",
+                "source_posting_id": "expired_1",
+                "title": "Expired Role",
+                "company": "Old GmbH",
+                "location": "Berlin, Germany",
+                "job_type": "Full-time",
+                "description": "Old listing.",
+                "posted_date": datetime.now(UTC) - timedelta(days=30),
+                "expires_at": datetime.now(UTC) - timedelta(days=1),
+            },
+            {
+                "id": "active_job",
+                "source": "licensed_provider",
+                "source_posting_id": "active_1",
+                "title": "Active Role",
+                "company": "Now GmbH",
+                "location": "Berlin, Germany",
+                "job_type": "Full-time",
+                "description": "Active listing.",
+                "posted_date": datetime.now(UTC),
+                "expires_at": datetime.now(UTC) + timedelta(days=10),
+            },
+        ])
+
+        expired_count = repo.mark_expired(reference_time=datetime.now(UTC))
+
+        assert expired_count == 1
+        assert [job["id"] for job in repo.list_job_dicts()] == ["active_job"]
+        assert repo.get_job_dict_by_id("expired_job") is None
+        assert repo.get_job_dict_by_id("expired_job", include_expired=True)["is_expired"] is True
+
+    def test_query_similar_jobs_uses_structured_fields_and_skills(self, db_session):
+        """Test similar job lookup works from persisted postings."""
+        repo = JobPostingRepository(db_session)
+        repo.save_jobs([
+            {
+                "id": "target",
+                "source": "licensed_provider",
+                "source_posting_id": "target",
+                "title": "Nurse",
+                "company": "Care GmbH",
+                "location": "Berlin, Germany",
+                "remote_status": "onsite",
+                "role_type": "Healthcare",
+                "occupation_group": "Healthcare and Nursing",
+                "job_type": "Full-time",
+                "description": "Patient care.",
+                "required_skills": ["Patient Care", "Documentation"],
+                "posted_date": datetime.now(UTC),
+            },
+            {
+                "id": "similar",
+                "source": "licensed_provider",
+                "source_posting_id": "similar",
+                "title": "Healthcare Assistant",
+                "company": "Care GmbH",
+                "location": "Berlin, Germany",
+                "remote_status": "onsite",
+                "role_type": "Healthcare",
+                "occupation_group": "Healthcare and Nursing",
+                "job_type": "Full-time",
+                "description": "Support patient care.",
+                "required_skills": ["Patient Care"],
+                "posted_date": datetime.now(UTC),
+            },
+            {
+                "id": "different",
+                "source": "licensed_provider",
+                "source_posting_id": "different",
+                "title": "Accountant",
+                "company": "Finance GmbH",
+                "location": "Frankfurt, Germany",
+                "remote_status": "hybrid",
+                "role_type": "Finance",
+                "occupation_group": "Finance",
+                "job_type": "Full-time",
+                "description": "Financial reporting.",
+                "required_skills": ["DATEV"],
+                "posted_date": datetime.now(UTC),
+            },
+        ])
+
+        similar_jobs = repo.query_similar_job_dicts("target")
+
+        assert [job["id"] for job in similar_jobs] == ["similar"]
 
 
 if __name__ == "__main__":
