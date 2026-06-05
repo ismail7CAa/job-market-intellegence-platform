@@ -6,9 +6,8 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from loguru import logger
-
 from src.database.repository import JobPostingRepository
+from src.observability.logging import event_logger
 
 from .models import JobPosting
 from .providers import JobPostingProvider, JobSearchRequest
@@ -123,9 +122,24 @@ class IngestionService:
 
         started_at = datetime.now(UTC)
         batch_id = f"ing_{started_at.strftime('%Y%m%d%H%M%S')}_{uuid4().hex[:8]}"
+        batch_log = event_logger(
+            "ingestion_batch",
+            ingestion_batch_id=batch_id,
+            sources=sources,
+            keywords=keywords,
+            limit_per_source=limit_per_source,
+            dry_run=dry_run,
+            mark_expired=mark_expired,
+        )
+        batch_log.info("Ingestion batch started.")
         decisions = self._evaluate_sources(sources)
         blocked = [decision for decision in decisions if not decision.allowed]
         if blocked:
+            event_logger(
+                "ingestion_blocked",
+                ingestion_batch_id=batch_id,
+                blocked_sources=[decision.source for decision in blocked],
+            ).warning("Ingestion blocked by source governance.")
             raise IngestionPolicyError(blocked)
 
         request = JobSearchRequest(keywords=keywords, limit=limit_per_source)
@@ -135,7 +149,12 @@ class IngestionService:
         for source in sources:
             provider = self._get_provider(source)
             source_key = self._provider_key(provider.source_id)
-            logger.info("ingestion_fetch source={} batch_id={}", source_key, batch_id)
+            event_logger(
+                "ingestion_provider_fetch",
+                ingestion_batch_id=batch_id,
+                source=source_key,
+                legal_basis=getattr(provider, "legal_basis", None),
+            ).info("Provider fetch started.")
             jobs = provider.fetch(request)
             stamped_jobs = self._attach_batch_id(jobs, batch_id)
             validate_job_postings(stamped_jobs)
@@ -155,20 +174,20 @@ class IngestionService:
                     ),
                 )
             )
-            logger.info(
-                "ingestion_{} source={} batch_id={} fetched={} saved={}",
-                "dry_run" if dry_run else "saved",
-                source_key,
-                batch_id,
-                len(stamped_jobs),
-                len(saved_jobs),
-            )
+            event_logger(
+                "ingestion_provider_result",
+                ingestion_batch_id=batch_id,
+                source=source_key,
+                fetched_count=len(stamped_jobs),
+                saved_count=len(saved_jobs),
+                dry_run=dry_run,
+            ).info("Provider ingestion result recorded.")
 
         expired_count = self.repository.mark_expired() if mark_expired and not dry_run else 0
         finished_at = datetime.now(UTC)
         active_jobs_after = len(self.repository.list_job_dicts())
 
-        return IngestionBatchSummary(
+        summary = IngestionBatchSummary(
             status="dry_run" if dry_run else "completed",
             ingestion_batch_id=batch_id,
             sources=[self._provider_key(source) for source in sources],
@@ -183,3 +202,14 @@ class IngestionService:
             finished_at=finished_at,
             duration_seconds=round((finished_at - started_at).total_seconds(), 3),
         )
+        event_logger(
+            "ingestion_batch_completed",
+            ingestion_batch_id=batch_id,
+            status=summary.status,
+            fetched_count=summary.fetched_count,
+            saved_count=summary.saved_count,
+            expired_count=summary.expired_count,
+            active_jobs_after=summary.active_jobs_after,
+            duration_seconds=summary.duration_seconds,
+        ).info("Ingestion batch completed.")
+        return summary

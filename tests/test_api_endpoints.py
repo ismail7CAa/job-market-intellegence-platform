@@ -302,4 +302,35 @@ class TestApiEndpoints:
         api_main._rate_limit_buckets.clear()
         assert first.status_code == 200
         assert second.status_code == 429
+        assert second.headers["x-request-id"]
         assert second.json()["detail"] == "Rate limit exceeded."
+
+    def test_request_id_is_returned_and_can_be_supplied_by_callers(self):
+        """Responses should carry a request id for log correlation."""
+        response = client.get(
+            "/health",
+            headers={"X-Request-ID": "test-request-id"},
+        )
+
+        assert response.status_code == 200
+        assert response.headers["x-request-id"] == "test-request-id"
+
+    def test_unhandled_errors_return_request_id(self, monkeypatch):
+        """Error middleware should log context and return the request id."""
+        def fail_search(*args, **kwargs):
+            raise RuntimeError("forced observability failure")
+
+        monkeypatch.setattr(api_main.job_search_service, "build_search_response", fail_search)
+
+        response = client.get(
+            "/jobs/search",
+            params={"q": "Nurse"},
+            headers={"X-Request-ID": "error-request-id"},
+        )
+
+        assert response.status_code == 500
+        assert response.headers["x-request-id"] == "error-request-id"
+        assert response.json() == {
+            "detail": "Internal server error.",
+            "request_id": "error-request-id",
+        }

@@ -6,18 +6,17 @@ from datetime import datetime
 from html import escape
 from pathlib import Path
 from time import monotonic
+from uuid import uuid4
 
 import pandas as pd
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from loguru import logger
 from sqlalchemy import text
 
 from config.settings import (
     API_HOST,
     API_PORT,
-    DATABASE_URL,
     DEBUG,
     MLFLOW_REGISTERED_MODEL_NAME,
     get_settings,
@@ -43,14 +42,18 @@ from src.data_pipeline.models import JobPosting
 from src.data_pipeline.providers import JobSearchRequest, LocalCsvJobProvider
 from src.data_pipeline.ingestion_service import IngestionPolicyError, IngestionService
 from src.market_context import EscoNormalizer
+from src.observability.logging import configure_logging, event_logger
 from src.prediction.role_predictor import RolePredictor
+
+settings = get_settings()
+configure_logging(settings.log_level, settings.log_json, debug=settings.debug)
 
 # Initialize database
 try:
-    _db = init_database(DATABASE_URL)
+    _db = init_database(settings.database_url)
     _db.create_tables()
 except Exception as e:
-    logger.warning(f"Database initialization skipped: {str(e)}")
+    event_logger("database_init_failed").warning("Database initialization skipped: {}", str(e))
     _db = None
 
 app = FastAPI(
@@ -59,8 +62,8 @@ app = FastAPI(
     version="0.1.0"
 )
 
-settings = get_settings()
 RATE_LIMIT_EXEMPT_PATHS = {"/health", "/ready"}
+REQUEST_ID_HEADER = "X-Request-ID"
 _rate_limit_buckets: dict[str, deque[float]] = defaultdict(deque)
 
 
@@ -68,7 +71,7 @@ def _configured_cors_origins() -> list[str]:
     """Return configured CORS origins with unsafe production wildcard protection."""
     origins = [origin.strip() for origin in settings.cors_allow_origins if origin.strip()]
     if "*" in origins and not settings.debug:
-        logger.warning("Ignoring wildcard CORS origin because DEBUG is disabled.")
+        event_logger("cors_wildcard_disabled").warning("Ignoring wildcard CORS origin because DEBUG is disabled.")
         return [origin for origin in origins if origin != "*"]
     return origins
 
@@ -128,28 +131,46 @@ async def public_backend_guardrails(request: Request, call_next):
     started_at = monotonic()
     client_ip = _client_ip(request)
     path = request.url.path
+    request_id = request.headers.get(REQUEST_ID_HEADER) or uuid4().hex
+    request.state.request_id = request_id
+    request_log = event_logger(
+        "http_request",
+        request_id=request_id,
+        method=request.method,
+        path=path,
+        client_ip=client_ip,
+    )
 
     if _is_rate_limited(client_ip, path):
         duration_ms = round((monotonic() - started_at) * 1000, 2)
-        logger.warning(
-            "rate_limited method={} path={} client={} duration_ms={}",
-            request.method,
-            path,
-            client_ip,
-            duration_ms,
+        request_log.bind(duration_ms=duration_ms, status_code=429).warning("Rate limit exceeded.")
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Rate limit exceeded."},
+            headers={REQUEST_ID_HEADER: request_id},
         )
-        return JSONResponse(status_code=429, content={"detail": "Rate limit exceeded."})
 
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        duration_ms = round((monotonic() - started_at) * 1000, 2)
+        event_logger(
+            "http_request_error",
+            request_id=request_id,
+            method=request.method,
+            path=path,
+            client_ip=client_ip,
+            duration_ms=duration_ms,
+        ).exception("Unhandled request error: {}", str(exc))
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error.", "request_id": request_id},
+            headers={REQUEST_ID_HEADER: request_id},
+        )
+
     duration_ms = round((monotonic() - started_at) * 1000, 2)
-    logger.info(
-        "request method={} path={} status={} client={} duration_ms={}",
-        request.method,
-        path,
-        response.status_code,
-        client_ip,
-        duration_ms,
-    )
+    response.headers[REQUEST_ID_HEADER] = request_id
+    request_log.bind(duration_ms=duration_ms, status_code=response.status_code).info("Request completed.")
     return response
 
 # Global instances
@@ -926,7 +947,7 @@ async def readiness_check():
                 session.execute(text("SELECT 1"))
             db_status = "connected"
         except Exception as exc:
-            logger.warning(f"Database health check failed: {exc}")
+            event_logger("readiness_database_failed").warning("Database readiness check failed: {}", str(exc))
             db_status = "error"
 
     try:
@@ -934,7 +955,7 @@ async def readiness_check():
         job_count = len(_get_loaded_job_dicts())
         data_status = "loaded" if job_count else "empty"
     except Exception as exc:
-        logger.warning(f"Readiness data check failed: {exc}")
+        event_logger("readiness_data_failed").warning("Data readiness check failed: {}", str(exc))
         data_status = "error"
 
     is_ready = db_status == "connected" and data_status == "loaded"
@@ -1000,7 +1021,7 @@ async def fetch_data(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Data fetch error: {str(e)}")
+        event_logger("ingestion_api_failed").exception("Data fetch error: {}", str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1034,7 +1055,7 @@ async def analyze_skill_demand(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Skill analysis error: {str(e)}")
+        event_logger("skill_analysis_failed").exception("Skill analysis error: {}", str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 

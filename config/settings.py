@@ -86,6 +86,7 @@ class AppSettings(BaseSettings):
 
     nlp_model: str = Field(default="bert-base-uncased", validation_alias="NLP_MODEL")
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
+    log_json: bool = Field(default=False, validation_alias="LOG_JSON")
 
     default_sources: List[str] = Field(
         default_factory=lambda: ["legal_demo_csv"],

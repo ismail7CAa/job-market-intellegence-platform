@@ -6,13 +6,12 @@ import argparse
 import sys
 from typing import Sequence
 
-from loguru import logger
-
 from config.settings import get_settings
 from src.data_pipeline.ingestion_service import IngestionPolicyError, IngestionService
 from src.data_pipeline.pipeline import DataPipeline
 from src.database import init_database
 from src.database.repository import JobPostingRepository
+from src.observability.logging import configure_logging, event_logger
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -88,6 +87,7 @@ def _print_summary(summary) -> None:
 def run(args: argparse.Namespace) -> int:
     """Execute ingestion from parsed CLI arguments."""
     settings = get_settings()
+    configure_logging(settings.log_level, settings.log_json, debug=settings.debug)
     sources = args.sources or settings.default_sources
     keywords = args.keywords or settings.default_keywords
     limit = args.limit or settings.default_limit_per_source
@@ -119,7 +119,7 @@ def run(args: argparse.Namespace) -> int:
                 print(f"  required_action: {decision.required_action}")
         return 2
     except Exception as exc:  # pragma: no cover - defensive operator path.
-        logger.exception("Ingestion CLI failed")
+        event_logger("ingestion_cli_failed").exception("Ingestion CLI failed: {}", str(exc))
         print(f"Ingestion failed: {exc}", file=sys.stderr)
         return 1
     finally:
