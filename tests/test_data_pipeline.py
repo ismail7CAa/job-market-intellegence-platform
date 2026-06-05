@@ -135,7 +135,14 @@ class TestJobProviders:
         assert len(jobs) == 1
         assert jobs[0].title == "Nurse"
         assert jobs[0].source == "legal_demo_csv"
-        assert jobs[0].source_legal_basis == "Local legal demo data for portfolio use."
+        assert jobs[0].source_legal_basis == "Local legal seed data for portfolio use."
+        assert jobs[0].source_posting_id == "seed_prod_001"
+        assert jobs[0].application_url.startswith("https://www.arbeitsagentur.de/")
+        assert jobs[0].city == "Berlin"
+        assert jobs[0].federal_state == "Berlin"
+        assert jobs[0].salary_period == "yearly"
+        assert jobs[0].salary_is_estimated is False
+        assert jobs[0].salary_confidence == 1.0
 
     def test_pipeline_can_run_registered_legal_provider(self):
         """Pipeline should ingest from provider adapters by source id."""

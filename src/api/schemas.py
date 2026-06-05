@@ -46,8 +46,23 @@ class JobResult(SalaryFields):
     posted_date: datetime | str | None = None
     source: str | None = None
     source_legal_basis: str | None = None
+    source_posting_id: str | None = None
     apply_url: str
     apply_endpoint: str
+    application_url: str | None = None
+    company_career_url: str | None = None
+    country: str | None = None
+    city: str | None = None
+    federal_state: str | None = None
+    occupation_group: str | None = None
+    experience_level: str | None = None
+    employment_type: str | None = None
+    salary_period: str | None = None
+    salary_is_estimated: bool = False
+    salary_confidence: float | None = None
+    expires_at: datetime | str | None = None
+    last_seen_at: datetime | str | None = None
+    is_expired: bool = False
 
 
 class SearchSummary(ApiModel):
@@ -108,6 +123,8 @@ class ApplyHandoff(ApiModel):
     company: str
     location: str
     apply_url: str
+    application_url: str
+    company_career_url: str | None = None
     apply_method: Literal["external_redirect"]
     button_label: str
     source: str | None = None

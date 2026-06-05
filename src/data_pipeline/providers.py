@@ -34,10 +34,10 @@ class JobPostingProvider(Protocol):
 
 
 class LocalCsvJobProvider:
-    """Load legal demo or licensed CSV jobs through the provider interface."""
+    """Load legal seed or licensed CSV jobs through the provider interface."""
 
     source_id = "legal_demo_csv"
-    legal_basis = "Local legal demo data for portfolio use."
+    legal_basis = "Local legal seed data for portfolio use."
 
     def __init__(
         self,
@@ -64,6 +64,40 @@ class LocalCsvJobProvider:
     @staticmethod
     def _nullable_value(value):
         return value if pd.notna(value) else None
+
+    @staticmethod
+    def _optional_datetime(value):
+        if value is None or pd.isna(value):
+            return None
+        if hasattr(value, "to_pydatetime"):
+            return value.to_pydatetime()
+        if isinstance(value, datetime):
+            return value
+        return pd.to_datetime(value).to_pydatetime()
+
+    @staticmethod
+    def _parse_bool(value, default: bool = False) -> bool:
+        if value is None or pd.isna(value):
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "y"}
+        return bool(value)
+
+    @staticmethod
+    def _infer_city(location: str) -> str | None:
+        if not location:
+            return None
+        return location.split(",")[0].strip() or None
+
+    @staticmethod
+    def _infer_country(location: str) -> str:
+        if location and "," in location:
+            country = location.split(",")[-1].strip()
+            if country:
+                return country
+        return "Germany"
 
     @staticmethod
     def _search_blob(job: JobPosting) -> str:
@@ -98,35 +132,54 @@ class LocalCsvJobProvider:
         return any(term in blob for term in terms)
 
     def _record_to_job(self, record: Dict) -> JobPosting:
-        posted_date = record.get("posted_date")
-        if hasattr(posted_date, "to_pydatetime"):
-            posted_date = posted_date.to_pydatetime()
-        elif not isinstance(posted_date, datetime):
-            posted_date = pd.to_datetime(posted_date).to_pydatetime()
+        posted_date = self._optional_datetime(record.get("posted_date"))
+        location = str(record["location"])
+        url = self._nullable_value(record.get("url"))
+        application_url = self._nullable_value(record.get("application_url")) or url
 
         return JobPosting(
             id=str(record["id"]),
             title=str(record["title"]),
             company=str(record["company"]),
-            location=str(record["location"]),
+            location=location,
             salary_min=self._nullable_value(record.get("salary_min")),
             salary_max=self._nullable_value(record.get("salary_max")),
+            salary_period=self._nullable_value(record.get("salary_period")) or "yearly",
+            salary_is_estimated=self._parse_bool(record.get("salary_is_estimated"), default=False),
+            salary_confidence=self._nullable_value(record.get("salary_confidence")),
             job_type=str(record.get("job_type") or "Full-time"),
+            employment_type=self._nullable_value(record.get("employment_type")) or "permanent",
             description=str(record.get("description") or ""),
             required_skills=self._parse_skills(record.get("required_skills")),
             posted_date=posted_date,
+            posted_at=self._optional_datetime(record.get("posted_at")) or posted_date,
+            expires_at=self._optional_datetime(record.get("expires_at")),
+            last_seen_at=self._optional_datetime(record.get("last_seen_at")) or posted_date,
             source=str(record.get("source") or self.source_id),
-            url=self._nullable_value(record.get("url")),
+            source_posting_id=self._nullable_value(record.get("source_posting_id")) or str(record["id"]),
+            url=url,
+            application_url=application_url,
+            company_career_url=self._nullable_value(record.get("company_career_url")),
+            country=self._nullable_value(record.get("country")) or self._infer_country(location),
+            city=self._nullable_value(record.get("city")) or self._infer_city(location),
+            federal_state=self._nullable_value(record.get("federal_state")),
             remote_status=self._nullable_value(record.get("remote_status")),
             role_type=self._nullable_value(record.get("role_type")),
+            occupation_group=self._nullable_value(record.get("occupation_group")) or self._nullable_value(record.get("role_type")),
+            experience_level=self._nullable_value(record.get("experience_level")),
             source_legal_basis=self._nullable_value(
                 record.get("source_legal_basis")
             ) or self.legal_basis,
+            ingestion_batch_id=self._nullable_value(record.get("ingestion_batch_id")),
         )
 
     def fetch(self, request: JobSearchRequest) -> List[JobPosting]:
         """Load and filter jobs from the configured CSV file."""
-        frame = pd.read_csv(self.dataset_path, parse_dates=["posted_date"])
+        parse_dates = [
+            column for column in ["posted_date", "posted_at", "expires_at", "last_seen_at"]
+            if column in pd.read_csv(self.dataset_path, nrows=0).columns
+        ]
+        frame = pd.read_csv(self.dataset_path, parse_dates=parse_dates)
         jobs = [self._record_to_job(record) for record in frame.to_dict(orient="records")]
         matches = [job for job in jobs if self._matches(job, request)]
         return matches[: request.limit]

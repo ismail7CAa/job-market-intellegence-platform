@@ -24,6 +24,7 @@ BLOCKED_SOURCE_IDS = {
 
 APPROVED_LEGAL_BASIS_TERMS = (
     "local legal demo",
+    "local legal seed",
     "licensed",
     "official api",
     "company feed",
@@ -61,7 +62,7 @@ def evaluate_source(source: str, legal_basis: str | None = None) -> SourcePolicy
             reason="Source is not approved for production ingestion.",
             required_action=(
                 "Use an official API, a licensed provider contract, a company feed with "
-                "explicit permission, or the local legal demo dataset."
+                "explicit permission, or the local legal seed listing dataset."
             ),
         )
 

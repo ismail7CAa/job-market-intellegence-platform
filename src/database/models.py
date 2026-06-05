@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.orm import declarative_base
 
@@ -83,18 +83,42 @@ class JobPosting(Base):
     """Job posting data."""
     
     __tablename__ = "job_postings"
+    __table_args__ = (
+        UniqueConstraint("source", "source_posting_id", name="unique_job_source_posting"),
+    )
     
     id = Column(String, primary_key=True)
     title = Column(String(255), nullable=False, index=True)
     company = Column(String(255), nullable=False, index=True)
     location = Column(String(255), index=True)
+    country = Column(String(100), default="Germany")
+    city = Column(String(120), index=True)
+    federal_state = Column(String(120), index=True)
     salary_min = Column(Integer)
     salary_max = Column(Integer)
+    salary_period = Column(String(50))
+    salary_is_estimated = Column(Boolean, default=False)
+    salary_confidence = Column(Float)
     job_type = Column(String(50))
+    employment_type = Column(String(80), index=True)
     description = Column(String)
+    required_skills = Column(String)
     source = Column(String(50), index=True)
+    source_posting_id = Column(String(255), index=True)
     url = Column(String)
+    application_url = Column(String)
+    company_career_url = Column(String)
+    remote_status = Column(String(50), index=True)
+    role_type = Column(String(120), index=True)
+    occupation_group = Column(String(255), index=True)
+    experience_level = Column(String(80), index=True)
+    source_legal_basis = Column(String)
+    ingestion_batch_id = Column(String(120), index=True)
     posted_date = Column(DateTime(timezone=True), index=True)
+    posted_at = Column(DateTime(timezone=True), index=True)
+    expires_at = Column(DateTime(timezone=True), index=True)
+    last_seen_at = Column(DateTime(timezone=True), index=True)
+    is_expired = Column(Boolean, default=False, nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at = Column(
         DateTime(timezone=True),

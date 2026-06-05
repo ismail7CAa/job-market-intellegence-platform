@@ -35,6 +35,15 @@ class TestApiEndpoints:
         assert payload["jobs"][0]["apply_url"].startswith("https://www.arbeitsagentur.de/")
         assert payload["jobs"][0]["apply_endpoint"] == "/jobs/prod_001/apply"
         assert payload["jobs"][0]["salary_type"] == "listed"
+        assert payload["jobs"][0]["source_posting_id"] == "seed_prod_001"
+        assert payload["jobs"][0]["city"] == "Berlin"
+        assert payload["jobs"][0]["federal_state"] == "Berlin"
+        assert payload["jobs"][0]["occupation_group"] == "Healthcare and Nursing"
+        assert payload["jobs"][0]["experience_level"] == "mid"
+        assert payload["jobs"][0]["employment_type"] == "permanent"
+        assert payload["jobs"][0]["salary_period"] == "yearly"
+        assert payload["jobs"][0]["salary_is_estimated"] is False
+        assert payload["jobs"][0]["salary_confidence"] == 1.0
         assert payload["data_governance"]["region"] == "Germany"
         assert "licensed" in payload["data_governance"]["legal_position"]
 
@@ -59,6 +68,7 @@ class TestApiEndpoints:
         assert payload["id"] == "prod_001"
         assert payload["title"] == "Nurse"
         assert payload["application"]["button_label"] == "Apply"
+        assert payload["application"]["application_url"].startswith("https://www.arbeitsagentur.de/")
         assert payload["salary"]["type"] == "listed"
         assert payload["market_context"]["similar_jobs_endpoint"] == "/jobs/prod_001/similar"
 

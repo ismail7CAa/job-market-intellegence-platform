@@ -110,7 +110,11 @@ class LinkedInScraper(DataSource):
                 required_skills=self._extract_skills(job_data.get("description", "")),
                 posted_date=datetime.fromisoformat(job_data.get("postedDate", "")),
                 source="linkedin",
-                url=job_data.get("url")
+                source_posting_id=job_data.get("id", ""),
+                url=job_data.get("url"),
+                application_url=job_data.get("url"),
+                salary_period="yearly",
+                salary_is_estimated=False,
             )
         except Exception as e:
             logger.warning(f"Failed to parse LinkedIn job: {str(e)}")
@@ -142,7 +146,10 @@ class LinkedInScraper(DataSource):
                 description=f"This is a mock {keyword} position",
                 required_skills=["Python", "FastAPI", "Docker"],
                 posted_date=datetime.now(),
-                source="linkedin"
+                source="linkedin",
+                source_posting_id=f"linkedin_{i}",
+                salary_period="yearly",
+                salary_is_estimated=False,
             )
             for i in range(min(limit, 5))
         ]
@@ -235,7 +242,10 @@ class KaggleDataLoader(DataSource):
                     str(row.get("job_description", "") or "")
                 ),
                 posted_date=datetime.now(),
-                source="kaggle"
+                source="kaggle",
+                source_posting_id=str(row.get("id", row.name)),
+                salary_period="yearly",
+                salary_is_estimated=False,
             )
         except Exception as e:
             logger.warning(f"Failed to parse Kaggle job: {str(e)}")
@@ -274,7 +284,10 @@ class KaggleDataLoader(DataSource):
                 description="This is a mock job posting from Kaggle dataset",
                 required_skills=["Python", "SQL", "Machine Learning"],
                 posted_date=datetime.now(),
-                source="kaggle"
+                source="kaggle",
+                source_posting_id=f"kaggle_{i}",
+                salary_period="yearly",
+                salary_is_estimated=False,
             )
             for i in range(min(limit, 10))
         ]

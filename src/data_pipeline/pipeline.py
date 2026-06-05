@@ -45,7 +45,7 @@ class DataPipeline:
             "local_csv": LocalCsvJobProvider(
                 settings.production_data_path,
                 source_id="local_csv",
-                legal_basis="Local legal demo data for development.",
+                legal_basis="Local legal seed data for development.",
             ),
         }
         self.processing_log = []
