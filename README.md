@@ -241,6 +241,7 @@ The public AWS EC2 deployment is currently stopped while the backend and data st
 
 - [INFRASTRUCTURE.md](INFRASTRUCTURE.md): deployment architecture and cloud setup
 - [docs/backend-review-2026-06-06.md](docs/backend-review-2026-06-06.md): final backend readiness review before redeployment
+- [docs/backend-progress-and-decisions.md](docs/backend-progress-and-decisions.md): backend problem-solution log before frontend work
 - [MLFLOW_SETUP.md](MLFLOW_SETUP.md): experiment tracking workflow
 - [docs/decisions/001-why-kafka.md](docs/decisions/001-why-kafka.md): Kafka architecture decision record
 - [docs/decisions/002-why-one-ec2-docker-compose.md](docs/decisions/002-why-one-ec2-docker-compose.md): one-EC2 portfolio deployment decision
