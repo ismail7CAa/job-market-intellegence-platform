@@ -18,6 +18,7 @@ from .providers import (
     KaggleJobProvider,
     LinkedInJobProvider,
     LocalCsvJobProvider,
+    MockCompanyFeedProvider,
 )
 from .scraper import LinkedInScraper, KaggleDataLoader
 from .validation import validate_job_postings
@@ -47,6 +48,7 @@ class DataPipeline:
                 source_id="local_csv",
                 legal_basis="Local legal seed data for development.",
             ),
+            "company_feed": MockCompanyFeedProvider(),
         }
         self.processing_log = []
         self.kafka_bootstrap_servers = (

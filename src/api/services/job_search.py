@@ -7,7 +7,7 @@ import math
 from typing import Callable, TYPE_CHECKING
 from urllib.parse import quote_plus
 
-from src.data_pipeline.source_policy import evaluate_source
+from src.data_pipeline.source_policy import evaluate_source, get_source_registry_entries
 from src.market_context import EscoNormalizer
 
 if TYPE_CHECKING:
@@ -927,6 +927,11 @@ class JobSearchService:
                     "reason": decision.reason,
                     "required_action": decision.required_action,
                     "legal_basis": source_basis.get(decision.source),
+                    "approval_status": decision.approval_status,
+                    "source_type": decision.source_type,
+                    "can_store_listings": decision.can_store_listings,
+                    "can_display_listings": decision.can_display_listings,
+                    "can_link_apply": decision.can_link_apply,
                 }
                 for decision in decisions
             ],
@@ -951,6 +956,32 @@ class JobSearchService:
                     "status": "useful for aggregate market context",
                     "use": "Regional labor-market context, not direct job listings for this engine.",
                 },
+            ],
+        }
+
+    def build_source_registry_report(self) -> dict:
+        """Return configured source onboarding status for operators and reviewers."""
+        return {
+            "status": "ready",
+            "sources": [
+                {
+                    "source": entry.source_id,
+                    "display_name": entry.display_name,
+                    "source_type": entry.source_type,
+                    "allowed": entry.allowed,
+                    "approval_status": entry.approval_status,
+                    "legal_basis": entry.legal_basis,
+                    "required_action": entry.required_action,
+                    "can_store_listings": entry.can_store_listings,
+                    "can_display_listings": entry.can_display_listings,
+                    "can_link_apply": entry.can_link_apply,
+                    "requires_contract": entry.requires_contract,
+                    "refresh_policy": entry.refresh_policy,
+                    "dedupe_key": entry.dedupe_key,
+                    "expiry_policy": entry.expiry_policy,
+                    "use_case": entry.use_case,
+                }
+                for entry in get_source_registry_entries()
             ],
         }
 

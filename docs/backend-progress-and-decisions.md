@@ -305,3 +305,37 @@ The frontend can now build against a stable backend contract:
 - match reasons and relevance scores
 
 That is enough to build the first real product UI: search jobs in Germany, filter results, inspect job detail, and apply through the source or company page.
+
+## 13. Source Onboarding Needed A Real Framework
+
+Problem:
+
+- The platform should eventually support company feeds, licensed providers, and official APIs.
+- Source approval was still mostly represented as hardcoded source names.
+- Large job boards such as LinkedIn and StepStone are attractive, but they cannot be used through scraping or unclear unofficial access.
+- Reviewers need to see that the project is engineered for legal source onboarding, not only for a local CSV.
+
+Solution:
+
+- Added `config/source_registry.json` as the source onboarding registry.
+- Added `SourceRegistryEntry` and registry helpers in `src/data_pipeline/source_policy.py`.
+- Enriched source policy decisions with approval status, source type, storage/display/apply permissions, and required actions.
+- Added `/data/sources` so the backend can expose approved, conditional, and blocked sources.
+- Added `python -m src.data_pipeline.sources` so operators can inspect source status from the terminal.
+- Added `MockCompanyFeedProvider` as a permissioned company-feed example using the real `JobPostingProvider` contract.
+- Added tests for source policy, the company-feed provider, API source visibility, and the CLI.
+- Added `docs/source-onboarding-framework.md`.
+
+Why this solution:
+
+- JSON keeps the registry dependency-free and reviewable.
+- Python dataclasses keep internal policy configuration lightweight.
+- Pydantic remains the public API contract layer.
+- FastAPI gives public product transparency, while the CLI gives operations visibility.
+- A synthetic company-feed provider proves the real adapter path without using unlicensed job-board data.
+
+Why not LinkedIn or StepStone now:
+
+- They can be excellent future sources only through official partner/API access, a feed contract, or explicit permission.
+- Scraping or unofficial endpoints would create terms-of-service risk, fragile ingestion, duplicate/expired listing drift, and unclear apply-link rights.
+- The backend now has the adapter and registry structure needed to add them properly later.

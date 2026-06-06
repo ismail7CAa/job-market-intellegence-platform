@@ -164,6 +164,9 @@ The backend was changed to enforce this strategy:
 - Added a standard API error contract: `error`, `message`, and `details`.
 - Added search quality regression tests for German/English synonyms, exact-title ranking, salary-type labeling, and expired-listing exclusion.
 - Added `ingestion_batches` persistence so ingestion runs are auditable after the request or CLI process exits.
+- Added `config/source_registry.json` so source onboarding is explicit, reviewable, and not only hardcoded.
+- Added `/data/sources` and `python -m src.data_pipeline.sources` for source-governance visibility.
+- Added `MockCompanyFeedProvider` to prove the company-feed path without using unlicensed real employer or job-board data.
 
 ## Problems Found During Backend Hardening
 
@@ -478,6 +481,24 @@ A licensed job-data provider may become the best production answer. But choosing
 
 Deferred until provider terms, cost, and coverage are reviewed.
 
+### Source onboarding registry
+
+The source policy now reads from `config/source_registry.json`.
+
+This registry exists because real providers need more than an allow/block flag. For each source, the backend tracks approval status, source type, legal basis, storage permission, display permission, apply-link permission, contract requirement, refresh policy, deduplication key, expiry policy, and required action.
+
+We used JSON for the registry because Python can read it with the standard library, CI does not need a YAML dependency, and GitHub diffs remain easy to review. The registry is loaded into Python dataclasses inside `source_policy.py`, while public API responses still use Pydantic schemas.
+
+This gives the platform three useful controls:
+
+- source rules can be reviewed before a provider adapter is enabled
+- `/data/sources` can show the product's source posture to the frontend or reviewers
+- `python -m src.data_pipeline.sources` can show operators the same status without running the web app
+
+The first new provider example is `MockCompanyFeedProvider`. It uses synthetic `.example.com` records but follows the same contract as a real company career feed: stable source posting IDs, application URLs, company career URL, explicit legal basis, salary metadata, lifecycle timestamps, and occupation fields.
+
+This was chosen instead of a LinkedIn or StepStone adapter because technical access is not the same as approved access. LinkedIn and StepStone can be added later, but only through official partner/API access, a feed contract, or written permission that allows storage, search, display, and apply-link handoff.
+
 ## Recommended Next Data Improvements
 
 The current committed dataset is broader than the first seed, but it is still synthetic and should not be presented as live market coverage. Before frontend polish or redeployment, improve the data story in this order:
@@ -503,6 +524,7 @@ Completed on 2026-06-05:
 - search matching now combines direct text matches, normalized occupation matches, skill matches, and ESCO-backed German-English synonym matches
 - salary estimation was added for postings without listed pay, using role type, location, occupation group, and experience-level peers
 - estimated salaries are never presented as listed salaries; API responses include `salary_type=estimated`, `salary_is_estimated=true`, confidence, and estimation basis
+- source onboarding now uses a JSON registry, API endpoint, CLI, and a permissioned company-feed example provider
 
 ## Source Approval Matrix
 

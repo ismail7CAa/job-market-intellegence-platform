@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Protocol
 
@@ -182,6 +182,119 @@ class LocalCsvJobProvider:
         frame = pd.read_csv(self.dataset_path, parse_dates=parse_dates)
         jobs = [self._record_to_job(record) for record in frame.to_dict(orient="records")]
         matches = [job for job in jobs if self._matches(job, request)]
+        return matches[: request.limit]
+
+
+class MockCompanyFeedProvider:
+    """Permissioned company-feed example using the real provider contract."""
+
+    source_id = "company_feed"
+    legal_basis = "Company feed with explicit permission for portfolio integration example."
+
+    def __init__(self):
+        now = datetime(2026, 6, 1, 9, 0, 0)
+        self._jobs = [
+            JobPosting(
+                id="company_feed_001",
+                title="Pflegefachkraft",
+                company="RheinCare Kliniken GmbH",
+                location="Cologne, Germany",
+                salary_min=42000,
+                salary_max=52000,
+                salary_period="yearly",
+                salary_is_estimated=False,
+                salary_confidence=1.0,
+                job_type="Full-time",
+                employment_type="permanent",
+                description="Patient care, shift coordination, and clinical documentation in a Cologne care unit.",
+                required_skills=["Nursing", "Patient Care", "Documentation"],
+                posted_date=now,
+                posted_at=now,
+                expires_at=now + timedelta(days=45),
+                last_seen_at=now,
+                source=self.source_id,
+                source_posting_id="rhein_care_pflege_2026_001",
+                url="https://careers.example.com/rheincare/jobs/pflegefachkraft",
+                application_url="https://careers.example.com/rheincare/apply/pflegefachkraft",
+                company_career_url="https://careers.example.com/rheincare",
+                country="Germany",
+                city="Cologne",
+                federal_state="North Rhine-Westphalia",
+                remote_status="onsite",
+                role_type="Healthcare",
+                occupation_group="Healthcare and Nursing",
+                experience_level="mid",
+                source_legal_basis=self.legal_basis,
+            ),
+            JobPosting(
+                id="company_feed_002",
+                title="Logistics Coordinator",
+                company="HanseLogistik Services GmbH",
+                location="Hamburg, Germany",
+                salary_min=39000,
+                salary_max=51000,
+                salary_period="yearly",
+                salary_is_estimated=False,
+                salary_confidence=1.0,
+                job_type="Full-time",
+                employment_type="permanent",
+                description="Coordinate warehouse dispatch, carrier handoffs, and delivery exceptions.",
+                required_skills=["Logistics", "Dispatch", "Inventory"],
+                posted_date=now,
+                posted_at=now,
+                expires_at=now + timedelta(days=30),
+                last_seen_at=now,
+                source=self.source_id,
+                source_posting_id="hanse_logistik_coord_2026_004",
+                url="https://careers.example.com/hanselogistik/jobs/logistics-coordinator",
+                application_url="https://careers.example.com/hanselogistik/apply/logistics-coordinator",
+                company_career_url="https://careers.example.com/hanselogistik",
+                country="Germany",
+                city="Hamburg",
+                federal_state="Hamburg",
+                remote_status="onsite",
+                role_type="Logistics",
+                occupation_group="Logistics and Supply Chain",
+                experience_level="mid",
+                source_legal_basis=self.legal_basis,
+            ),
+            JobPosting(
+                id="company_feed_003",
+                title="HR Generalist",
+                company="Mittelstand People Operations GmbH",
+                location="Munich, Germany",
+                salary_min=48000,
+                salary_max=62000,
+                salary_period="yearly",
+                salary_is_estimated=False,
+                salary_confidence=1.0,
+                job_type="Full-time",
+                employment_type="permanent",
+                description="Support recruiting, employee relations, onboarding, and HR operations.",
+                required_skills=["Recruiting", "Employee Relations", "HR Operations"],
+                posted_date=now,
+                posted_at=now,
+                expires_at=now + timedelta(days=40),
+                last_seen_at=now,
+                source=self.source_id,
+                source_posting_id="mittelstand_hr_generalist_2026_002",
+                url="https://careers.example.com/peopleops/jobs/hr-generalist",
+                application_url="https://careers.example.com/peopleops/apply/hr-generalist",
+                company_career_url="https://careers.example.com/peopleops",
+                country="Germany",
+                city="Munich",
+                federal_state="Bavaria",
+                remote_status="hybrid",
+                role_type="HR",
+                occupation_group="Human Resources",
+                experience_level="mid",
+                source_legal_basis=self.legal_basis,
+            ),
+        ]
+
+    def fetch(self, request: JobSearchRequest) -> List[JobPosting]:
+        """Return matching jobs from the permissioned company-feed example."""
+        matches = [job for job in self._jobs if LocalCsvJobProvider._matches(job, request)]
         return matches[: request.limit]
 
 

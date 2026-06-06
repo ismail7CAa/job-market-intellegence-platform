@@ -8,7 +8,11 @@ import pandera.errors as pa_errors
 import pytest
 
 from src.data_pipeline.models import JobPosting
-from src.data_pipeline.providers import JobSearchRequest, LocalCsvJobProvider
+from src.data_pipeline.providers import (
+    JobSearchRequest,
+    LocalCsvJobProvider,
+    MockCompanyFeedProvider,
+)
 from src.data_pipeline.scraper import LinkedInScraper, KaggleDataLoader
 from src.data_pipeline.pipeline import DataPipeline
 from src.data_pipeline.validation import validate_job_postings
@@ -158,6 +162,18 @@ class TestJobProviders:
         assert {job.title for job in jobs} == {"Accountant"}
         assert pipeline.processing_log[0]["source"] == "legal_demo_csv"
         assert "legal_basis" in pipeline.processing_log[0]
+
+    def test_mock_company_feed_provider_returns_permissioned_jobs(self):
+        """Company-feed example should model real approved employer feeds."""
+        provider = MockCompanyFeedProvider()
+
+        jobs = provider.fetch(JobSearchRequest(keywords=["Pflege"], limit=5))
+
+        assert len(jobs) == 1
+        assert jobs[0].source == "company_feed"
+        assert jobs[0].source_posting_id == "rhein_care_pflege_2026_001"
+        assert jobs[0].application_url.startswith("https://careers.example.com/")
+        assert "explicit permission" in jobs[0].source_legal_basis
 
 
 class TestDataPipeline:

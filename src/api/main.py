@@ -37,6 +37,7 @@ from src.api.schemas import (
     SearchFacetsResponse,
     SearchSuggestionsResponse,
     SimilarJobsResponse,
+    SourceRegistryResponse,
 )
 from src.api.errors import api_error, error_response, http_error_handler, validation_error_handler
 from src.api.services.job_search import JobSearchService
@@ -999,6 +1000,12 @@ async def apply_to_job(
 async def get_data_governance():
     """Return legal-source governance for the currently loaded job data."""
     return job_search_service.build_data_governance_report()
+
+
+@app.get("/data/sources", response_model=SourceRegistryResponse)
+async def get_source_registry():
+    """Return configured source onboarding status."""
+    return job_search_service.build_source_registry_report()
 
 
 @app.get("/engine/workflow", response_model=EngineWorkflowResponse)

@@ -239,6 +239,38 @@ class SourceGovernance(ApiModel):
     reason: str
     required_action: str | None = None
     legal_basis: str | None = None
+    approval_status: str | None = None
+    source_type: str | None = None
+    can_store_listings: bool = False
+    can_display_listings: bool = False
+    can_link_apply: bool = False
+
+
+class SourceRegistryItem(ApiModel):
+    """Configured onboarding status for one possible source."""
+
+    source: str
+    display_name: str
+    source_type: str
+    allowed: bool
+    approval_status: str
+    legal_basis: str | None = None
+    required_action: str | None = None
+    can_store_listings: bool = False
+    can_display_listings: bool = False
+    can_link_apply: bool = False
+    requires_contract: bool = False
+    refresh_policy: str | None = None
+    dedupe_key: str | None = None
+    expiry_policy: str | None = None
+    use_case: str | None = None
+
+
+class SourceRegistryResponse(ApiModel):
+    """Response contract for source onboarding visibility."""
+
+    status: Literal["ready"]
+    sources: list[SourceRegistryItem]
 
 
 class CandidateLiveSource(ApiModel):

@@ -227,6 +227,21 @@ class TestApiEndpoints:
         assert payload["status"] == "ready"
         assert payload["approved_for_current_stage"] is True
         assert payload["sources"][0]["allowed"] is True
+        assert payload["sources"][0]["approval_status"]
+        assert payload["sources"][0]["can_display_listings"] is True
+
+    def test_data_sources_endpoint_reports_onboarding_registry(self):
+        """Source registry endpoint should explain approved and blocked source paths."""
+        response = client.get("/data/sources")
+
+        assert response.status_code == 200
+        payload = response.json()
+        sources = {source["source"]: source for source in payload["sources"]}
+        assert payload["status"] == "ready"
+        assert sources["company_feed"]["allowed"] is True
+        assert sources["company_feed"]["approval_status"] == "approved_when_permission_explicit"
+        assert sources["stepstone"]["allowed"] is False
+        assert sources["stepstone"]["can_store_listings"] is False
 
     def test_data_fetch_is_hidden_without_admin_token(self):
         """Live fetch should not be discoverable or usable as a public route."""
