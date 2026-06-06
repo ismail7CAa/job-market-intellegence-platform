@@ -91,7 +91,30 @@ The results dashboard provides:
 - salary, market context, skills, source policy, similar jobs, and apply handoff
 - standard error display using the backend error contract
 
-## 5. Design Direction
+## 5. API Integration Without Showing Raw JSON
+
+Problem:
+
+- Users should never be sent to a raw JSON API response.
+- The browser URL should not be the source of truth for result rendering.
+- The results page should render product UI from backend data, not expose backend payloads directly.
+
+Solution:
+
+- `search.js` calls the backend search API on submit.
+- The returned `JobSearchResponse` is stored in `sessionStorage`.
+- The browser then navigates to `/results`.
+- `results.js` reads the stored payload from `sessionStorage`.
+- If no stored payload exists, `/results` redirects back to `/`.
+- Filter, sort, and pagination changes refresh the backend payload and replace the stored result.
+
+Why:
+
+- The user always sees cards, filters, summaries, and detail panels instead of raw JSON.
+- The backend API remains clean and reusable.
+- The frontend keeps the first result render fast because the first payload is already available when `/results` opens.
+
+## 6. Design Direction
 
 Chosen style:
 
@@ -114,7 +137,7 @@ Why:
 - The product should feel authoritative and useful for job-market analysis.
 - The backend has serious data-governance and salary-context work; the frontend should visually match that credibility.
 
-## 6. Tests Added
+## 7. Tests Added
 
 Added API endpoint tests that verify:
 

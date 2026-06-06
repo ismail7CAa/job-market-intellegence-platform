@@ -125,9 +125,11 @@ The programming-language split is intentional:
 - Python remains responsible for API, repository access, ingestion, validation, governance, salary estimation, and deployment config.
 - HTML defines document structure for the search and result pages.
 - CSS owns the editorial dark intelligence visual system.
-- JavaScript owns browser-side state: URL params, API calls, filter rendering, result rendering, detail panel selection, pagination, and error display.
+- JavaScript owns browser-side state: API calls, sessionStorage result handoff, filter rendering, result rendering, detail panel selection, pagination, and error display.
 
 This is a better fit than Python-only rendering because the results page is interactive, but it avoids the cost of a full frontend framework before it is necessary.
+
+The search page calls `/jobs/search`, stores the returned API payload in `sessionStorage`, and then opens `/results`. The results page renders cards from that stored payload and redirects back to `/` if no search payload exists. This keeps raw JSON out of the user-facing flow while preserving clean API endpoints for tests and external clients.
 
 ## Tradeoffs Accepted
 

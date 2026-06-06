@@ -1,5 +1,7 @@
 (function () {
   const api = window.JobIntelApi;
+  const resultsKey = "jobIntel.searchResults";
+  const stateKey = "jobIntel.searchState";
   const state = {
     page: 1,
     perPage: 10,
@@ -7,7 +9,6 @@
     selectedJobId: null,
   };
 
-  const params = new URLSearchParams(window.location.search);
   const queryInput = document.getElementById("query");
   const locationInput = document.getElementById("location");
   const sortInput = document.getElementById("sort");
@@ -26,8 +27,65 @@
   const detailEmpty = document.getElementById("detail-empty");
   const detailContent = document.getElementById("detail-content");
 
-  queryInput.value = params.get("q") || "";
-  locationInput.value = params.get("location") || "";
+  function redirectToSearch() {
+    window.location.href = "/";
+  }
+
+  function readStoredPayload() {
+    const raw = sessionStorage.getItem(resultsKey);
+    if (!raw) {
+      redirectToSearch();
+      return null;
+    }
+    try {
+      return JSON.parse(raw);
+    } catch (_error) {
+      sessionStorage.removeItem(resultsKey);
+      redirectToSearch();
+      return null;
+    }
+  }
+
+  function readStoredState(payload) {
+    const raw = sessionStorage.getItem(stateKey);
+    if (!raw) {
+      return {
+        q: payload.query || "",
+        location: payload.location || "",
+        sort: payload.sort || "relevance",
+        page: payload.page || 1,
+        per_page: payload.per_page || state.perPage,
+      };
+    }
+    try {
+      return JSON.parse(raw);
+    } catch (_error) {
+      return {
+        q: payload.query || "",
+        location: payload.location || "",
+        sort: payload.sort || "relevance",
+        page: payload.page || 1,
+        per_page: payload.per_page || state.perPage,
+      };
+    }
+  }
+
+  const initialPayload = readStoredPayload();
+  if (!initialPayload) {
+    return;
+  }
+
+  const initialState = readStoredState(initialPayload);
+  queryInput.value = initialState.q || "";
+  locationInput.value = initialState.location || "";
+  sortInput.value = initialState.sort || "relevance";
+  companyInput.value = initialState.company || "";
+  roleTypeInput.value = initialState.role_type || "";
+  employmentTypeInput.value = initialState.employment_type || "";
+  salaryMinInput.value = initialState.salary_min || "";
+  salaryMaxInput.value = initialState.salary_max || "";
+  state.page = Number(initialState.page || initialPayload.page || 1);
+  state.perPage = Number(initialState.per_page || initialPayload.per_page || 10);
 
   function escapeHtml(value) {
     return String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -65,17 +123,6 @@
       page: state.page,
       per_page: state.perPage,
     };
-  }
-
-  function setUrlFromState() {
-    const next = new URLSearchParams();
-    const searchParams = buildSearchParams();
-    Object.entries(searchParams).forEach(([key, value]) => {
-      if (value && !["page", "per_page"].includes(key)) {
-        next.set(key, value);
-      }
-    });
-    window.history.replaceState({}, "", `/results?${next.toString()}`);
   }
 
   function fillSelect(select, rows, label) {
@@ -241,8 +288,10 @@
   async function runSearch() {
     showStatus("Loading jobs...", false);
     try {
-      setUrlFromState();
-      const payload = await api.searchJobs(buildSearchParams());
+      const searchParams = buildSearchParams();
+      const payload = await api.searchJobs(searchParams);
+      sessionStorage.setItem(resultsKey, JSON.stringify(payload));
+      sessionStorage.setItem(stateKey, JSON.stringify(searchParams));
       showStatus("", false);
       renderSummary(payload);
       renderJobs(payload.jobs || []);
@@ -279,5 +328,8 @@
 
   loadFacets()
     .catch((error) => showStatus(error.message || "Could not load filters.", true))
-    .finally(runSearch);
+    .finally(() => {
+      renderSummary(initialPayload);
+      renderJobs(initialPayload.jobs || []);
+    });
 })();
