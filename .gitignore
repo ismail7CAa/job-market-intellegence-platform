@@ -1,5 +1,7 @@
 # Environment variables
 .env
+.env.*
+!.env.example
 .env.local
 .env.*.local
 
@@ -29,7 +31,7 @@ wheels/
 venv/
 ENV/
 env/
-.venv
+.venv/
 
 # IDE
 .vscode/

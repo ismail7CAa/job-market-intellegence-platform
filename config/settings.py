@@ -6,6 +6,9 @@ from functools import lru_cache
 from pathlib import Path
 from typing import List
 
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
+
 try:
     from dotenv import load_dotenv
 except ImportError:  # pragma: no cover - optional at runtime in lean environments
@@ -13,7 +16,7 @@ except ImportError:  # pragma: no cover - optional at runtime in lean environmen
         """Fallback no-op when python-dotenv is unavailable."""
         return False
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -81,6 +84,7 @@ class AppSettings(BaseSettings):
         validation_alias="CORS_ALLOW_ORIGINS",
     )
     ingestion_api_token: str = Field(default="", validation_alias="INGESTION_API_TOKEN")
+    ingestion_enabled: bool = Field(default=False, validation_alias="INGESTION_ENABLED")
     rate_limit_requests: int = Field(default=600, validation_alias="RATE_LIMIT_REQUESTS")
     rate_limit_window_seconds: int = Field(default=60, validation_alias="RATE_LIMIT_WINDOW_SECONDS")
 
@@ -162,6 +166,46 @@ class AppSettings(BaseSettings):
             if normalized in {"release", "prod", "production"}:
                 return False
         return value
+
+    @model_validator(mode="after")
+    def validate_deployment_safety(self):
+        """Fail fast for unsafe deployment configuration."""
+        try:
+            database_url = make_url(self.database_url)
+        except ArgumentError as exc:
+            raise ValueError("DATABASE_URL must be a valid SQLAlchemy database URL.") from exc
+
+        supported_database_drivers = {
+            "sqlite",
+            "postgresql",
+            "postgresql+psycopg2",
+            "postgresql+pg8000",
+        }
+        if database_url.drivername not in supported_database_drivers:
+            raise ValueError(
+                "DATABASE_URL must use sqlite or PostgreSQL for this backend."
+            )
+
+        if self.rate_limit_requests < 1:
+            raise ValueError("RATE_LIMIT_REQUESTS must be at least 1.")
+        if self.rate_limit_window_seconds < 1:
+            raise ValueError("RATE_LIMIT_WINDOW_SECONDS must be at least 1.")
+
+        if self.debug:
+            return self
+
+        if "*" in {origin.strip() for origin in self.cors_allow_origins}:
+            raise ValueError("CORS_ALLOW_ORIGINS cannot include '*' when DEBUG=false.")
+        if self.ingestion_enabled and not self.ingestion_api_token.strip():
+            raise ValueError("INGESTION_API_TOKEN is required when INGESTION_ENABLED=true.")
+        if self.rate_limit_requests > 5_000:
+            raise ValueError("RATE_LIMIT_REQUESTS is too permissive for deployment.")
+        if self.rate_limit_window_seconds < 10:
+            raise ValueError("RATE_LIMIT_WINDOW_SECONDS must be at least 10 when DEBUG=false.")
+        if not self.production_data_path.exists():
+            raise ValueError("PRODUCTION_DATA_PATH must point to an existing file when DEBUG=false.")
+
+        return self
 
 
 @lru_cache
