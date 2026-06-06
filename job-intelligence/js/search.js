@@ -17,6 +17,7 @@
     statusMessage.hidden = !message;
     statusMessage.textContent = message || "";
     statusMessage.classList.toggle("error", Boolean(isError));
+    statusMessage.classList.toggle("loading", Boolean(message) && !isError);
   }
 
   async function searchAndOpenResults(query, location) {

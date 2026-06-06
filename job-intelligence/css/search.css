@@ -11,6 +11,7 @@
   justify-content: space-between;
   gap: 18px;
   border-bottom: 1px solid var(--line);
+  animation: rise-in 420ms ease both;
 }
 
 .header-nav {
@@ -37,6 +38,7 @@
 
 .hero {
   max-width: 940px;
+  animation: rise-in 520ms ease both;
 }
 
 .hero h1 {
@@ -63,7 +65,8 @@
   border-bottom: 1px solid var(--line);
   background: var(--panel);
   padding: 18px;
-  box-shadow: 0 22px 70px var(--shadow);
+  box-shadow: 0 22px 70px var(--shadow-strong);
+  animation: rise-in 620ms ease both;
 }
 
 .search-form {
@@ -98,6 +101,16 @@
 .quick-searches button:hover {
   border-color: var(--amber);
   color: var(--amber-strong);
+  transform: translateY(-1px);
+}
+
+.quick-searches button:active,
+.primary-action:active {
+  transform: translateY(0);
+}
+
+#search-status {
+  margin-top: 14px;
 }
 
 .market-strip {
@@ -107,12 +120,18 @@
   margin-top: 30px;
   border: 1px solid var(--line);
   background: var(--line);
+  animation: rise-in 720ms ease both;
 }
 
 .market-strip article {
   min-height: 112px;
   background: #090d13;
   padding: 18px;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.market-strip article:hover {
+  background: #0d131b;
 }
 
 .market-strip span {
@@ -146,5 +165,25 @@
   .search-form,
   .market-strip {
     grid-template-columns: 1fr;
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-header,
+  .hero,
+  .search-panel,
+  .market-strip {
+    animation: none;
   }
 }

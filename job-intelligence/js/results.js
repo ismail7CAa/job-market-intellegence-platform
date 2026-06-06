@@ -108,6 +108,14 @@
     statusMessage.hidden = !message;
     statusMessage.textContent = message || "";
     statusMessage.classList.toggle("error", Boolean(isError));
+    statusMessage.classList.toggle("loading", Boolean(message) && !isError);
+  }
+
+  function renderLoadingSkeletons() {
+    jobList.innerHTML = Array.from({ length: 4 }, () => '<article class="job-card skeleton" aria-hidden="true"></article>').join("");
+    detailEmpty.hidden = true;
+    detailContent.hidden = false;
+    detailContent.innerHTML = '<div class="detail-card skeleton" aria-hidden="true"></div>';
   }
 
   function buildSearchParams() {
@@ -287,6 +295,7 @@
 
   async function runSearch() {
     showStatus("Loading jobs...", false);
+    renderLoadingSkeletons();
     try {
       const searchParams = buildSearchParams();
       const payload = await api.searchJobs(searchParams);

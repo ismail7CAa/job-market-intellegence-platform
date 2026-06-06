@@ -146,6 +146,30 @@ Added API endpoint tests that verify:
 
 These tests protect the routing contract. Full visual QA still needs a browser pass once the local server is running.
 
+## 8. Polish Pass
+
+Problem:
+
+- The first functional frontend slice worked, but it needed stronger interaction feedback before visual review.
+- Searches and filter changes needed a clearer loading state.
+- Cards and panels needed sharper affordance so users understand what is clickable or selected.
+- Mobile layouts needed safer spacing and hierarchy.
+
+Solution:
+
+- Added focus-visible states for keyboard users.
+- Added restrained hover/active feedback for buttons, chips, result cards, apply links, and similar-job rows.
+- Added loading classes and skeleton placeholders for search and result refreshes.
+- Improved selected-card styling with an amber accent line.
+- Added subtle entrance motion while respecting `prefers-reduced-motion`.
+- Tightened responsive spacing for the filter rail, result column, and detail panel.
+
+Why:
+
+- The frontend should feel fast and data-serious without becoming flashy.
+- The UI now gives clear feedback while preserving the editorial dark intelligence direction.
+- The next visual pass can focus on real browser screenshots rather than basic interaction gaps.
+
 ## Remaining Frontend Work
 
 Next frontend steps:
