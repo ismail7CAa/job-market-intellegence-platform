@@ -1,0 +1,150 @@
+.search-page {
+  min-height: 100vh;
+}
+
+.site-header {
+  width: min(1180px, calc(100% - 32px));
+  min-height: 72px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.header-nav {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.header-nav a {
+  text-decoration: none;
+}
+
+.header-nav a:hover {
+  color: var(--amber);
+}
+
+.search-shell {
+  width: min(1180px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 66px 0 42px;
+}
+
+.hero {
+  max-width: 940px;
+}
+
+.hero h1 {
+  margin: 0;
+  max-width: 900px;
+  font-family: var(--serif);
+  font-size: clamp(46px, 7vw, 92px);
+  font-weight: 700;
+  line-height: 0.95;
+  letter-spacing: 0;
+}
+
+.hero-copy {
+  max-width: 760px;
+  margin: 24px 0 0;
+  color: var(--text-soft);
+  font-size: 19px;
+  line-height: 1.58;
+}
+
+.search-panel {
+  margin-top: 42px;
+  border-top: 1px solid var(--line-bright);
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  padding: 18px;
+  box-shadow: 0 22px 70px var(--shadow);
+}
+
+.search-form {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(190px, 260px) 150px;
+  gap: 12px;
+  align-items: end;
+}
+
+.field-query input {
+  min-height: 54px;
+  font-size: 17px;
+}
+
+.quick-searches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 14px;
+}
+
+.quick-searches button {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  background: #0a0f16;
+  color: var(--text-soft);
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.quick-searches button:hover {
+  border-color: var(--amber);
+  color: var(--amber-strong);
+}
+
+.market-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: 30px;
+  border: 1px solid var(--line);
+  background: var(--line);
+}
+
+.market-strip article {
+  min-height: 112px;
+  background: #090d13;
+  padding: 18px;
+}
+
+.market-strip span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.market-strip strong {
+  display: block;
+  margin-top: 14px;
+  color: var(--text);
+  font-family: var(--serif);
+  font-size: 22px;
+  line-height: 1.12;
+}
+
+@media (max-width: 820px) {
+  .site-header {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 16px 0;
+  }
+
+  .search-shell {
+    padding-top: 42px;
+  }
+
+  .search-form,
+  .market-strip {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Search Results | German Job Market Intelligence</title>
+  <link rel="stylesheet" href="/job-intelligence/css/base.css">
+  <link rel="stylesheet" href="/job-intelligence/css/results.css">
+</head>
+<body class="results-page">
+  <header class="app-header">
+    <a class="brand" href="/" aria-label="German Job Market Intelligence">
+      <span class="brand-mark">DE</span>
+      <span>Job Market Intelligence</span>
+    </a>
+    <form id="top-search-form" class="top-search" aria-label="Update search">
+      <input id="query" name="q" type="search" autocomplete="off" placeholder="Search role, skill, company">
+      <input id="location" name="location" type="search" autocomplete="off" placeholder="Location">
+      <button type="submit">Search</button>
+    </form>
+  </header>
+
+  <main class="results-layout">
+    <aside class="filter-rail" aria-label="Search filters">
+      <div class="rail-section">
+        <p class="eyebrow">Filters</p>
+        <label class="field">
+          <span>Sort</span>
+          <select id="sort">
+            <option value="relevance">Relevance</option>
+            <option value="salary_desc">Salary high to low</option>
+            <option value="salary_asc">Salary low to high</option>
+            <option value="posted_desc">Newest</option>
+            <option value="company">Company</option>
+            <option value="title">Title</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Company</span>
+          <select id="company"><option value="">Any company</option></select>
+        </label>
+        <label class="field">
+          <span>Role type</span>
+          <select id="role-type"><option value="">Any role type</option></select>
+        </label>
+        <label class="field">
+          <span>Employment type</span>
+          <select id="employment-type"><option value="">Any employment type</option></select>
+        </label>
+        <label class="field">
+          <span>Minimum salary</span>
+          <input id="salary-min" type="number" min="0" step="1000" placeholder="40000">
+        </label>
+        <label class="field">
+          <span>Maximum salary</span>
+          <input id="salary-max" type="number" min="0" step="1000" placeholder="90000">
+        </label>
+        <button id="apply-filters" class="secondary-action" type="button">Apply filters</button>
+      </div>
+
+      <div class="rail-section source-note">
+        <p class="eyebrow">Data guardrails</p>
+        <p id="governance-note">Loading data policy...</p>
+      </div>
+    </aside>
+
+    <section class="results-column" aria-live="polite">
+      <div class="results-toolbar">
+        <div>
+          <p class="eyebrow" id="search-label">Search results</p>
+          <h1 id="results-title">Loading jobs</h1>
+        </div>
+        <div class="pager">
+          <button id="previous-page" type="button" aria-label="Previous page">Prev</button>
+          <span id="page-label">Page 1</span>
+          <button id="next-page" type="button" aria-label="Next page">Next</button>
+        </div>
+      </div>
+
+      <div class="intelligence-strip" aria-label="Search intelligence">
+        <article>
+          <span>Total matches</span>
+          <strong id="total-matches">-</strong>
+        </article>
+        <article>
+          <span>Average salary</span>
+          <strong id="average-salary">-</strong>
+        </article>
+        <article>
+          <span>Listed salaries</span>
+          <strong id="listed-salaries">-</strong>
+        </article>
+        <article>
+          <span>Apply links</span>
+          <strong id="apply-links">-</strong>
+        </article>
+      </div>
+
+      <div id="status-message" class="status-message" hidden></div>
+      <div id="job-list" class="job-list"></div>
+    </section>
+
+    <aside class="detail-panel" aria-label="Selected job detail">
+      <div id="detail-empty" class="detail-empty">
+        <p class="eyebrow">Job detail</p>
+        <h2>Select a result</h2>
+        <p>Open a job to inspect salary context, source policy, similar roles, and the application handoff.</p>
+      </div>
+      <div id="detail-content" hidden></div>
+    </aside>
+  </main>
+
+  <script src="/job-intelligence/js/api.js" defer></script>
+  <script src="/job-intelligence/js/results.js" defer></script>
+</body>
+</html>

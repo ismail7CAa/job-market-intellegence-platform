@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>German Job Market Intelligence</title>
+  <link rel="stylesheet" href="/job-intelligence/css/base.css">
+  <link rel="stylesheet" href="/job-intelligence/css/search.css">
+</head>
+<body class="search-page">
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="German Job Market Intelligence">
+      <span class="brand-mark">DE</span>
+      <span>Job Market Intelligence</span>
+    </a>
+    <nav class="header-nav" aria-label="Primary">
+      <a href="/data/governance">Data policy</a>
+      <a href="/ready">Readiness</a>
+      <a href="/docs">API</a>
+    </nav>
+  </header>
+
+  <main class="search-shell">
+    <section class="hero" aria-labelledby="page-title">
+      <p class="eyebrow">Germany-wide role search</p>
+      <h1 id="page-title">Search jobs with the context a senior analyst would expect.</h1>
+      <p class="hero-copy">
+        Find roles across German sectors, compare salary signals, inspect company and market context,
+        then move directly to the approved application page.
+      </p>
+    </section>
+
+    <section class="search-panel" aria-label="Search jobs">
+      <form id="search-form" class="search-form">
+        <label class="field field-query">
+          <span>Role, company, skill, or profession</span>
+          <input id="query" name="q" type="search" autocomplete="off" placeholder="Pflege, Buchhaltung, Sales Manager">
+        </label>
+        <label class="field">
+          <span>Location</span>
+          <input id="location" name="location" type="search" autocomplete="off" placeholder="Germany, Berlin, Hamburg">
+        </label>
+        <button class="primary-action" type="submit">Search jobs</button>
+      </form>
+
+      <div class="quick-searches" aria-label="Fast searches">
+        <button type="button" data-query="Pflege">Pflege</button>
+        <button type="button" data-query="Buchhaltung">Buchhaltung</button>
+        <button type="button" data-query="Logistik">Logistik</button>
+        <button type="button" data-query="Sales Manager">Sales Manager</button>
+        <button type="button" data-query="Data Analyst">Data Analyst</button>
+      </div>
+    </section>
+
+    <section class="market-strip" aria-label="Platform status">
+      <article>
+        <span>Source posture</span>
+        <strong>Legal seed + approved adapters</strong>
+      </article>
+      <article>
+        <span>Salary handling</span>
+        <strong>Listed and estimated kept separate</strong>
+      </article>
+      <article>
+        <span>Apply flow</span>
+        <strong>External handoff to source/company</strong>
+      </article>
+    </section>
+  </main>
+
+  <script src="/job-intelligence/js/search.js" defer></script>
+</body>
+</html>

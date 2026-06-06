@@ -15,6 +15,24 @@ client = testclient.TestClient(app)
 class TestApiEndpoints:
     """Verify the API placeholder routes now return real results."""
 
+    def test_static_search_page_is_served_from_fastapi(self):
+        """Root route should serve the maintained static search experience."""
+        response = client.get("/")
+
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        assert "German Job Market Intelligence" in response.text
+        assert "/job-intelligence/js/search.js" in response.text
+
+    def test_static_results_page_is_served_from_fastapi(self):
+        """Results route should serve the frontend dashboard shell."""
+        response = client.get("/results")
+
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        assert "Search Results" in response.text
+        assert "/job-intelligence/js/results.js" in response.text
+
     def test_predict_roles_endpoint(self):
         """Predict roles endpoint should return model-backed output."""
         response = client.get("/predict/roles", params={"quarters_ahead": 2})

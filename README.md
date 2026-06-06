@@ -44,7 +44,7 @@ flowchart LR
 
     subgraph Serving
         API[FastAPI]
-        WEB[FastAPI-served dashboard]
+        WEB[FastAPI-served static frontend]
         SEARCH[Job search API]
         APPLY[Apply handoff]
     end
@@ -101,7 +101,7 @@ The backend blocks unapproved live sources through `/data/fetch` and reports sou
 - **Legal data sourcing is explicit.** Individual job listings require approved listing sources, while official open statistics are used only as market context. See [docs/decisions/009-legal-data-and-source-strategy.md](docs/decisions/009-legal-data-and-source-strategy.md).
 - **GitHub Actions and GHCR provide the first CI/CD path.** The EC2 host pulls a built image instead of building from source on the instance. See [docs/decisions/005-why-github-actions-ghcr.md](docs/decisions/005-why-github-actions-ghcr.md).
 - **The demo is focused on Germany.** German roles, cities, and EUR salary ranges make the product story more specific and credible. See [docs/decisions/006-why-german-market-focus.md](docs/decisions/006-why-german-market-focus.md).
-- **The frontend is served by FastAPI for v1.** This keeps the deployment as one app container while the product workflow is still compact: search, inspect, and apply. See [docs/decisions/007-why-fastapi-served-dashboard.md](docs/decisions/007-why-fastapi-served-dashboard.md).
+- **The frontend is served by FastAPI for v1.** Static HTML, CSS, and JavaScript keep the deployment as one app container while the product workflow is still compact: search, inspect, and apply. See [docs/decisions/007-why-fastapi-served-dashboard.md](docs/decisions/007-why-fastapi-served-dashboard.md).
 - **The Docker image uses runtime-only dependencies.** `requirements-runtime.txt` avoids shipping heavy research/orchestration packages into the public API image. See [docs/decisions/008-why-slim-docker-runtime-image.md](docs/decisions/008-why-slim-docker-runtime-image.md).
 - **Data quality is enforced at dataframe boundaries.** Pydantic validates individual job objects; Pandera validates whole batches before they leave the pipeline. This caught a real development bug where sparse Kaggle salary fields could become fake `0` salaries.
 - **Job sources plug in through provider adapters.** `JobPostingProvider` adapters accept a provider-neutral search request and return normalized `JobPosting` records, so licensed providers or company feeds can be added without changing the search API, salary intelligence, apply handoff, or dashboard code.
@@ -212,6 +212,7 @@ When live-ingested jobs are not loaded yet, the API can fall back to the local s
 - `src/api/`: FastAPI application and endpoint orchestration
 - `src/api/schemas.py`: Pydantic response contracts for public API payloads
 - `src/api/services/`: backend service layer for job search, detail, facets, governance, and apply handoff
+- `job-intelligence/`: FastAPI-served static frontend for search, results, filters, detail, and apply handoff
 - `src/nlp/`: archived natural-language experiments, not part of the public product API
 - `src/database/`: SQLAlchemy models and repository helpers
 - `migrations/`: Alembic database migrations for controlled schema changes
@@ -227,9 +228,9 @@ The public AWS EC2 deployment is currently stopped while the backend and data st
 ## What I Would Improve With More Time
 
 - Add a custom domain and HTTPS in front of the EC2 deployment.
-- Split the current FastAPI-served dashboard into a dedicated React/Vite frontend if the UI grows beyond the v1 dashboard.
+- Split the current FastAPI-served static frontend into a dedicated React/Vite frontend if the UI grows beyond the v1 search and results workflow.
 - Add a scheduled orchestration path that runs ingestion, validation, dbt transformations, feature generation, and retraining as separate observable jobs.
-- Trigger `IngestionService` from a scheduled worker or admin CLI instead of only the protected API route.
+- Trigger `IngestionService` from a scheduled worker after the admin CLI path is wired into deployment operations.
 - Expand the legal synthetic German job dataset and add official Eurostat/BA/EURES market-context adapters.
 - Replace demo listings with a production-safe provider, explicit company feed, or official listings API only after terms are confirmed.
 - Add data drift checks and model monitoring around salary distributions, skill vocabulary shifts, and role-classification confidence.
@@ -242,6 +243,7 @@ The public AWS EC2 deployment is currently stopped while the backend and data st
 - [INFRASTRUCTURE.md](INFRASTRUCTURE.md): deployment architecture and cloud setup
 - [docs/backend-review-2026-06-06.md](docs/backend-review-2026-06-06.md): final backend readiness review before redeployment
 - [docs/backend-progress-and-decisions.md](docs/backend-progress-and-decisions.md): backend problem-solution log before frontend work
+- [docs/frontend-progress-and-decisions.md](docs/frontend-progress-and-decisions.md): frontend problem-solution log for the first static UI slice
 - [MLFLOW_SETUP.md](MLFLOW_SETUP.md): experiment tracking workflow
 - [docs/decisions/001-why-kafka.md](docs/decisions/001-why-kafka.md): Kafka architecture decision record
 - [docs/decisions/002-why-one-ec2-docker-compose.md](docs/decisions/002-why-one-ec2-docker-compose.md): one-EC2 portfolio deployment decision
@@ -249,6 +251,6 @@ The public AWS EC2 deployment is currently stopped while the backend and data st
 - [docs/decisions/004-why-data-for-public-portfolio.md](docs/decisions/004-why-data-for-public-portfolio.md): local legal seed listing decision
 - [docs/decisions/005-why-github-actions-ghcr.md](docs/decisions/005-why-github-actions-ghcr.md): CI/CD and image registry decision
 - [docs/decisions/006-why-german-market-focus.md](docs/decisions/006-why-german-market-focus.md): German market focus decision
-- [docs/decisions/007-why-fastapi-served-dashboard.md](docs/decisions/007-why-fastapi-served-dashboard.md): dashboard/frontend decision
+- [docs/decisions/007-why-fastapi-served-dashboard.md](docs/decisions/007-why-fastapi-served-dashboard.md): FastAPI-served frontend decision
 - [docs/decisions/008-why-slim-docker-runtime-image.md](docs/decisions/008-why-slim-docker-runtime-image.md): runtime image decision
 - [docs/decisions/009-legal-data-and-source-strategy.md](docs/decisions/009-legal-data-and-source-strategy.md): legal data and source strategy

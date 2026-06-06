@@ -12,7 +12,8 @@ import pandas as pd
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from pandera.errors import SchemaError, SchemaErrors
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlalchemy import text
@@ -52,6 +53,7 @@ from src.prediction.role_predictor import RolePredictor
 
 settings = get_settings()
 configure_logging(settings.log_level, settings.log_json, debug=settings.debug)
+FRONTEND_DIR = Path(__file__).resolve().parents[2] / "job-intelligence"
 
 # Initialize database
 try:
@@ -77,6 +79,11 @@ app = FastAPI(
 )
 app.add_exception_handler(StarletteHTTPException, http_error_handler)
 app.add_exception_handler(RequestValidationError, validation_error_handler)
+app.mount(
+    "/job-intelligence",
+    StaticFiles(directory=FRONTEND_DIR),
+    name="job-intelligence",
+)
 
 RATE_LIMIT_EXEMPT_PATHS = {"/health", "/ready"}
 REQUEST_ID_HEADER = "X-Request-ID"
@@ -858,7 +865,13 @@ def _render_search_dashboard() -> HTMLResponse:
 @app.get("/")
 async def root():
     """Germany-wide job search homepage."""
-    return _render_search_dashboard()
+    return FileResponse(FRONTEND_DIR / "index.html")
+
+
+@app.get("/results")
+async def results_page():
+    """Repository-backed search results dashboard."""
+    return FileResponse(FRONTEND_DIR / "results.html")
 
 
 @app.get("/jobs/search", response_model=JobSearchResponse)
