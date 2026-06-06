@@ -29,12 +29,14 @@ Solution:
 - Documented the legal source strategy in `docs/decisions/009-legal-data-and-source-strategy.md`.
 - Kept local synthetic German listings for development and portfolio review.
 - Added ESCO market-context data for occupation and skill normalization because it is legal and improves search quality without pretending to be job listings.
+- Defined the real-source priority: explicit company feeds first, licensed providers second, official/open listing APIs third, and commercial job boards such as LinkedIn or StepStone only through official/approved access.
 
 Why this solution:
 
 - It avoids building the product on unapproved scraping.
 - It keeps the backend ready for licensed job providers, company feeds, or official APIs later.
 - It gives the frontend enough realistic data to build the workflow safely.
+- It keeps LinkedIn, StepStone, Indeed, and similar boards technically possible later without making illegal or unsupported access part of the current product story.
 
 ## 2. Job Data Was Too Small and Too Demo-Shaped
 

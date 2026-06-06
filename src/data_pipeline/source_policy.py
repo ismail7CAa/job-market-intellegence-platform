@@ -16,6 +16,9 @@ APPROVED_SOURCE_IDS = {
 
 BLOCKED_SOURCE_IDS = {
     "linkedin",
+    "stepstone",
+    "indeed",
+    "glassdoor",
     "kaggle",
     "scraper",
     "web_scraping",

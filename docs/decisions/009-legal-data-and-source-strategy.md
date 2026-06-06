@@ -115,6 +115,19 @@ For actual searchable job listings shown to users, allow only:
 
 These records must normalize into the `JobPosting` contract and include source-governance metadata.
 
+### Source Priority for Real Listings
+
+When replacing or supplementing the local legal seed data, use this order:
+
+1. Company career feeds with explicit permission.
+2. Licensed job-data providers whose contract allows storing, searching, displaying, and linking job listings.
+3. Official/open APIs with clear terms for individual job-listing use.
+4. Job boards such as LinkedIn, StepStone, Indeed, or Glassdoor only through official partner/API access or another written permission path that clearly allows the platform's use case.
+
+This order is intentional. Company feeds and licensed providers can give stable source IDs, application URLs, refresh rules, and redistribution rights. Official APIs can also work when their terms explicitly allow serving individual listings. Large job boards may be valuable sources, but they are not acceptable through scraping, unofficial endpoints, or unclear third-party datasets.
+
+LinkedIn and StepStone are therefore blocked by default in `source_policy.py`. They can become approved later only if we have official partner access, a provider contract, or explicit permission. The backend adapter interface is ready for that future source; the current product should not pretend that such access already exists.
+
 ### Layer 2: Market Context
 
 For broader labour-market intelligence, allow official open statistical and taxonomy sources:
@@ -134,7 +147,7 @@ The backend was changed to enforce this strategy:
 - Added `src/data_pipeline/providers.py`.
 - Added a `JobPostingProvider` adapter interface.
 - Default source changed to `legal_demo_csv`.
-- `/data/fetch` now blocks unapproved sources such as LinkedIn and Kaggle.
+- `/data/fetch` now blocks unapproved sources such as LinkedIn, StepStone, Indeed, Glassdoor, and Kaggle.
 - `/data/fetch` is hidden from OpenAPI and requires `X-Admin-Token` when `INGESTION_API_TOKEN` is configured, so ingestion is not part of the anonymous public surface.
 - `/data/governance` exposes the current source policy and legal basis.
 - `/engine/workflow` describes the product workflow from search intent to apply handoff.
@@ -446,6 +459,19 @@ Kaggle can be useful for experiments, but generic job datasets are often stale, 
 
 Rejected as default product data.
 
+### Not LinkedIn, StepStone, Indeed, or Glassdoor through scraping
+
+These job boards are relevant to German job search, but relevance is not the same as permission. The platform needs to store, search, display, and link listings in a stable product. That requires a source contract or official access path, not HTML scraping or unofficial mirrors.
+
+Decision:
+
+- Do not scrape these job boards.
+- Do not use unofficial third-party dumps as production listing sources.
+- Keep them blocked in source governance until official partner access, a licensed provider feed, or explicit permission is confirmed.
+- If approved access is obtained later, implement each board as a normal `JobPostingProvider` adapter and keep the search engine unchanged.
+
+This protects the platform from terms-of-service risk, fragile page parsing, duplicate/expired listing drift, and unclear apply-link rights.
+
 ### Not a paid provider yet
 
 A licensed job-data provider may become the best production answer. But choosing one before the backend contract is stable would couple the product too early to a vendor.
@@ -492,6 +518,9 @@ Completed on 2026-06-05:
 | EURES statistics | Free | Official statistics/download tables | No direct listing contract | No | Market context |
 | EURES portal listings | Free for users | Needs terms/API review for ingestion | Yes | Yes | Candidate, not approved |
 | ESCO taxonomy | Free | Official taxonomy/API/download | No | No | Enrichment |
+| LinkedIn jobs | Commercial platform | Approved only with official partner/API access or explicit permission | Yes | Yes | Blocked by default |
+| StepStone jobs | Commercial platform | Approved only with official partner/API access, feed contract, or explicit permission | Yes | Yes | Blocked by default |
+| Indeed/Glassdoor jobs | Commercial platforms | Approved only with official partner/API access or explicit permission | Yes | Yes | Blocked by default |
 | Kaggle/random scraped datasets | Free or mixed | License-specific, often unclear | Sometimes | Usually no | Experiments only |
 
 ## Consequences

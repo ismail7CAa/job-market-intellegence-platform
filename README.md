@@ -83,6 +83,8 @@ The project intentionally separates **job listings** from **market context**.
 
 Job listings require a source that legally allows storing, serving, and linking to application pages. The current default is `legal_demo_csv`, which keeps tests and local development reproducible. Future live listings should come from licensed providers, company feeds with explicit permission, or official APIs with clear terms.
 
+Real listing sources are prioritized in this order: company career feeds with explicit permission, licensed job-data providers, official/open APIs with clear listing terms, and only then commercial job boards such as LinkedIn or StepStone through approved partner/API access. Scraping LinkedIn, StepStone, Indeed, Glassdoor, or similar job boards is blocked by source governance.
+
 Market context can use larger no-cost official sources, but these do not replace job postings:
 
 - Eurostat job vacancy statistics for aggregate vacancy context
