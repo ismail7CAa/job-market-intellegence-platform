@@ -23,8 +23,17 @@ services:
       DATABASE_URL: "postgresql://${DB_USER:-jobmarket}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-job_market}"
       DEBUG: "${DEBUG:-false}"
       LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      LOG_JSON: "${LOG_JSON:-true}"
       MARKET_REGION: "${MARKET_REGION:-Germany}"
       DEFAULT_CURRENCY: "${DEFAULT_CURRENCY:-EUR}"
+      PUBLIC_BASE_URL: "${PUBLIC_BASE_URL:-http://localhost:8000}"
+      CORS_ALLOW_ORIGINS: "${CORS_ALLOW_ORIGINS:-[\"http://localhost:8000\"]}"
+      INGESTION_ENABLED: "${INGESTION_ENABLED:-false}"
+      INGESTION_API_TOKEN: "${INGESTION_API_TOKEN:-}"
+      RATE_LIMIT_REQUESTS: "${RATE_LIMIT_REQUESTS:-600}"
+      RATE_LIMIT_WINDOW_SECONDS: "${RATE_LIMIT_WINDOW_SECONDS:-60}"
+      PRODUCTION_DATA_PATH: "${PRODUCTION_DATA_PATH:-/app/data/job_postings_production.csv}"
+      TRAINING_DATA_PATH: "${TRAINING_DATA_PATH:-/app/data/job_postings_training.csv}"
       API_HOST: 0.0.0.0
       API_PORT: 8000
       LINKEDIN_API_KEY: ${LINKEDIN_API_KEY:-}
