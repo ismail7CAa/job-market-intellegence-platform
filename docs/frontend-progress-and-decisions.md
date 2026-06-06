@@ -67,10 +67,11 @@ Implemented:
 The search page provides:
 
 - brand identity
+- one simple inspiring platform sentence instead of explanatory marketing blocks
 - job/profession search input
 - location input
 - quick searches such as `Pflege`, `Buchhaltung`, `Logistik`, `Sales Manager`, and `Data Analyst`
-- direct navigation to `/results` with query parameters
+- direct navigation to `/results` after storing the backend search payload in `sessionStorage`
 
 ## 4. Results Dashboard
 
@@ -130,6 +131,7 @@ Rejected:
 - bubbly SaaS styling
 - heavy gradients
 - decorative cards that do not support the workflow
+- extra landing-page status columns that repeat backend concepts instead of helping users search
 - visible AI-agent surface for this product step
 
 Why:

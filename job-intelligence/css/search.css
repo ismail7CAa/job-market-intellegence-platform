@@ -1,5 +1,7 @@
 .search-page {
   min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .site-header {
@@ -33,34 +35,38 @@
 .search-shell {
   width: min(1180px, calc(100% - 32px));
   margin: 0 auto;
-  padding: 66px 0 42px;
+  padding: clamp(42px, 8vh, 78px) 0 42px;
+  align-self: start;
 }
 
 .hero {
-  max-width: 940px;
+  max-width: 860px;
+  margin: 0 auto;
+  text-align: center;
   animation: rise-in 520ms ease both;
 }
 
 .hero h1 {
   margin: 0;
-  max-width: 900px;
+  max-width: 860px;
   font-family: var(--serif);
-  font-size: clamp(46px, 7vw, 92px);
+  font-size: clamp(42px, 6.2vw, 78px);
   font-weight: 700;
-  line-height: 0.95;
+  line-height: 1;
   letter-spacing: 0;
 }
 
 .hero-copy {
-  max-width: 760px;
-  margin: 24px 0 0;
+  max-width: 680px;
+  margin: 20px auto 0;
   color: var(--text-soft);
-  font-size: 19px;
+  font-size: 18px;
   line-height: 1.58;
 }
 
 .search-panel {
-  margin-top: 42px;
+  width: min(920px, 100%);
+  margin: 30px auto 0;
   border-top: 1px solid var(--line-bright);
   border-bottom: 1px solid var(--line);
   background: var(--panel);
@@ -113,44 +119,6 @@
   margin-top: 14px;
 }
 
-.market-strip {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1px;
-  margin-top: 30px;
-  border: 1px solid var(--line);
-  background: var(--line);
-  animation: rise-in 720ms ease both;
-}
-
-.market-strip article {
-  min-height: 112px;
-  background: #090d13;
-  padding: 18px;
-  transition: background 140ms ease, border-color 140ms ease;
-}
-
-.market-strip article:hover {
-  background: #0d131b;
-}
-
-.market-strip span {
-  display: block;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.market-strip strong {
-  display: block;
-  margin-top: 14px;
-  color: var(--text);
-  font-family: var(--serif);
-  font-size: 22px;
-  line-height: 1.12;
-}
-
 @media (max-width: 820px) {
   .site-header {
     align-items: flex-start;
@@ -159,11 +127,10 @@
   }
 
   .search-shell {
-    padding-top: 42px;
+    padding-top: 34px;
   }
 
-  .search-form,
-  .market-strip {
+  .search-form {
     grid-template-columns: 1fr;
   }
 }
@@ -182,8 +149,7 @@
 @media (prefers-reduced-motion: reduce) {
   .site-header,
   .hero,
-  .search-panel,
-  .market-strip {
+  .search-panel {
     animation: none;
   }
 }
