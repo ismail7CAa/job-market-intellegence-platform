@@ -131,6 +131,8 @@ This is a better fit than Python-only rendering because the results page is inte
 
 The search page calls `/jobs/search`, stores the returned API payload in `sessionStorage`, and then opens `/results`. The results page renders cards from that stored payload and redirects back to `/` if no search payload exists. This keeps raw JSON out of the user-facing flow while preserving clean API endpoints for tests and external clients.
 
+Search recommendations are also backend-owned. The frontend calls `/jobs/search/suggestions` while the user types, and the backend returns suggestions from the current job index plus ESCO-normalized terms. This avoids hardcoded client-side word lists and keeps recommendations accurate when the provider data changes.
+
 ## Tradeoffs Accepted
 
 By keeping the frontend static and FastAPI-served for now, we accept:

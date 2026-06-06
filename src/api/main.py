@@ -35,6 +35,7 @@ from src.api.schemas import (
     JobDetailResponse,
     JobSearchResponse,
     SearchFacetsResponse,
+    SearchSuggestionsResponse,
     SimilarJobsResponse,
 )
 from src.api.errors import api_error, error_response, http_error_handler, validation_error_handler
@@ -912,6 +913,15 @@ async def search_jobs(
 async def get_search_facets():
     """Return available filters for the current job index."""
     return job_search_service.build_search_facets()
+
+
+@app.get("/jobs/search/suggestions", response_model=SearchSuggestionsResponse)
+async def get_search_suggestions(
+    q: str = Query("", description="Partial role, company, city, skill, or occupation"),
+    limit: int = Query(8, ge=1, le=20),
+):
+    """Return typeahead suggestions for the search box."""
+    return job_search_service.build_search_suggestions(query=q, limit=limit)
 
 
 @app.get("/market/esco/normalize", response_model=EscoNormalizeResponse)

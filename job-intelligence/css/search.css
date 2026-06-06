@@ -65,7 +65,7 @@
 }
 
 .search-panel {
-  width: min(920px, 100%);
+  width: min(1040px, 100%);
   margin: 30px auto 0;
   border-top: 1px solid var(--line-bright);
   border-bottom: 1px solid var(--line);
@@ -77,9 +77,13 @@
 
 .search-form {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(190px, 260px) 150px;
+  grid-template-columns: minmax(360px, 1.6fr) minmax(200px, 280px) 150px;
   gap: 12px;
   align-items: end;
+}
+
+.field-query {
+  position: relative;
 }
 
 .field-query input {
@@ -117,6 +121,60 @@
 
 #search-status {
   margin-top: 14px;
+}
+
+.suggestions {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  border: 1px solid var(--line-bright);
+  background: #090d13;
+  box-shadow: 0 18px 44px var(--shadow-strong);
+  max-height: 280px;
+  overflow: auto;
+}
+
+.suggestion-button {
+  width: 100%;
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  padding: 0 12px;
+  text-align: left;
+}
+
+.suggestion-button:last-child {
+  border-bottom: 0;
+}
+
+.suggestion-button:hover,
+.suggestion-button.active {
+  background: rgba(214, 168, 90, 0.08);
+  color: var(--amber-strong);
+  transform: none;
+}
+
+.suggestion-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suggestion-category {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 @media (max-width: 820px) {

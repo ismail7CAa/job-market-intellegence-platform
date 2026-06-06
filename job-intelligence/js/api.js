@@ -20,6 +20,7 @@ window.JobIntelApi = (function () {
 
   return {
     searchJobs: (params) => request("/jobs/search", params),
+    suggestions: (params) => request("/jobs/search/suggestions", params),
     facets: () => request("/jobs/search/facets"),
     jobDetail: (jobId) => request(`/jobs/${encodeURIComponent(jobId)}`),
     similarJobs: (jobId) => request(`/jobs/${encodeURIComponent(jobId)}/similar`, { limit: 4 }),

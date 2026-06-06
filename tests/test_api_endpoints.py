@@ -137,6 +137,26 @@ class TestApiEndpoints:
         assert {"value": "Public Sector", "count": 10} in payload["role_types"]
         assert payload["salary_range"]["currency"] == "EUR"
 
+    def test_search_suggestions_endpoint_returns_typeahead_values(self):
+        """Suggestions should help users find indexed and normalized search terms."""
+        response = client.get("/jobs/search/suggestions", params={"q": "Pf", "limit": 5})
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["status"] == "ready"
+        assert payload["query"] == "Pf"
+        assert payload["suggestions"]
+        assert all("value" in suggestion for suggestion in payload["suggestions"])
+
+    def test_search_suggestions_include_esco_normalized_roles(self):
+        """German terms should suggest normalized role language."""
+        response = client.get("/jobs/search/suggestions", params={"q": "Pflege", "limit": 8})
+
+        assert response.status_code == 200
+        payload = response.json()
+        values = [suggestion["value"] for suggestion in payload["suggestions"]]
+        assert "Nurse" in values
+
     def test_job_search_uses_esco_query_expansion(self):
         """Search should understand ESCO occupation aliases."""
         response = client.get("/jobs/search", params={"q": "nursing", "location": "Berlin"})
@@ -290,11 +310,13 @@ class TestApiEndpoints:
         assert "JobDetailResponse" in payload["components"]["schemas"]
         assert "ApplyHandoff" in payload["components"]["schemas"]
         assert "ErrorResponse" in payload["components"]["schemas"]
+        assert "SearchSuggestionsResponse" in payload["components"]["schemas"]
         assert (
             payload["paths"]["/jobs/search"]["get"]["responses"]["200"]["content"]
             ["application/json"]["schema"]["$ref"]
             == "#/components/schemas/JobSearchResponse"
         )
+        assert "/jobs/search/suggestions" in payload["paths"]
         assert "SearchFilters" in payload["components"]["schemas"]
 
     def test_salary_anomalies_endpoint(self):

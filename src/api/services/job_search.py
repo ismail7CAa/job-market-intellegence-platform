@@ -59,6 +59,40 @@ class JobSearchService:
         return [{"value": key, "count": value} for key, value in rows]
 
     @staticmethod
+    def _suggestion_label(value: str, category: str) -> str:
+        """Return a compact label for a typeahead suggestion."""
+        labels = {
+            "title": "Job title",
+            "company": "Company",
+            "location": "Location",
+            "skill": "Skill",
+            "occupation": "Occupation",
+            "role_type": "Role group",
+        }
+        return f"{value} · {labels.get(category, category)}"
+
+    @staticmethod
+    def _suggestion_score(value: str, count: int, query: str, category: str) -> tuple[int, int, str]:
+        """Sort exact prefix suggestions above broad contains matches."""
+        normalized_value = value.lower()
+        normalized_query = query.lower()
+        category_priority = {
+            "title": 0,
+            "occupation": 1,
+            "skill": 2,
+            "role_type": 3,
+            "company": 4,
+            "location": 5,
+        }.get(category, 9)
+        if normalized_value == normalized_query:
+            match_rank = 0
+        elif normalized_value.startswith(normalized_query):
+            match_rank = 1
+        else:
+            match_rank = 2
+        return (match_rank, category_priority, -count, normalized_value)
+
+    @staticmethod
     def salary_midpoint(job: dict) -> float | None:
         """Return a salary midpoint when both bounds are present."""
         salary_min = job.get("salary_min")
@@ -240,6 +274,75 @@ class JobSearchService:
         ]
         terms.extend(self.esco_normalizer.expand_query_terms(query))
         return sorted({term for term in terms if term})
+
+    def build_search_suggestions(self, query: str, limit: int = 8) -> dict:
+        """Return typeahead suggestions from indexed jobs and ESCO-normalized terms."""
+        normalized_query = query.strip().lower()
+        if not normalized_query:
+            return {"status": "ready", "query": query, "suggestions": []}
+
+        counters: dict[str, Counter] = {
+            "title": Counter(),
+            "company": Counter(),
+            "location": Counter(),
+            "skill": Counter(),
+            "occupation": Counter(),
+            "role_type": Counter(),
+        }
+
+        for job in self._jobs():
+            for category, value in (
+                ("title", job.get("title")),
+                ("company", job.get("company")),
+                ("location", job.get("city") or job.get("location")),
+                ("occupation", job.get("occupation_group")),
+                ("role_type", job.get("role_type")),
+            ):
+                if value and normalized_query in str(value).lower():
+                    counters[category][str(value)] += 1
+            for skill in job.get("required_skills", []) or []:
+                if normalized_query in str(skill).lower():
+                    counters["skill"][str(skill)] += 1
+
+        normalized = self.esco_normalizer.normalize_query(query)
+        for concept in normalized.get("occupations", []):
+            value = concept.get("preferred_label")
+            if value:
+                counters["title"][str(value)] += 3
+            for alias in concept.get("aliases", []):
+                if normalized_query in str(alias).lower():
+                    counters["occupation"][str(alias)] += 1
+        for concept in normalized.get("skills", []):
+            value = concept.get("preferred_label")
+            if value:
+                counters["skill"][str(value)] += 2
+
+        rows = []
+        seen = set()
+        for category, counter in counters.items():
+            for value, count in counter.items():
+                key = value.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                rows.append({
+                    "value": value,
+                    "label": self._suggestion_label(value, category),
+                    "category": category,
+                    "count": count,
+                    "_sort": self._suggestion_score(value, count, normalized_query, category),
+                })
+
+        rows.sort(key=lambda row: row["_sort"])
+        suggestions = [
+            {key: value for key, value in row.items() if key != "_sort"}
+            for row in rows[:limit]
+        ]
+        return {
+            "status": "ready",
+            "query": query,
+            "suggestions": suggestions,
+        }
 
     @staticmethod
     def _contains(value: object, term: str) -> bool:

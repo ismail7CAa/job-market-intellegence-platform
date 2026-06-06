@@ -172,6 +172,28 @@ Why:
 - The UI now gives clear feedback while preserving the editorial dark intelligence direction.
 - The next visual pass can focus on real browser screenshots rather than basic interaction gaps.
 
+## 9. Wider Search and Typeahead Recommendations
+
+Problem:
+
+- The search input needed more visual priority on the landing page.
+- Users should not need to know the exact role wording in the dataset.
+- Hardcoded frontend suggestions would quickly become inaccurate as providers or seed data change.
+
+Solution:
+
+- Widened the landing search panel and gave the main query input more space.
+- Added `/jobs/search/suggestions` as a backend-backed typeahead endpoint.
+- Suggestions come from indexed titles, companies, cities, skills, occupation groups, role groups, and ESCO-normalized terms.
+- `search.js` debounces typing and renders recommendations under the search input.
+- Keyboard support includes arrow navigation, enter to choose, and escape to close.
+
+Why:
+
+- The user gets help while typing without seeing raw JSON or leaving the search page.
+- Suggestions stay aligned with the actual job index and ESCO normalization.
+- The frontend remains simple while the backend owns search intelligence.
+
 ## Remaining Frontend Work
 
 Next frontend steps:

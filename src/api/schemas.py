@@ -214,6 +214,23 @@ class SearchFacetsResponse(ApiModel):
     salary_range: SalaryFacetRange
 
 
+class SearchSuggestion(ApiModel):
+    """One typeahead suggestion for the frontend search box."""
+
+    value: str
+    label: str
+    category: Literal["title", "company", "location", "skill", "occupation", "role_type"]
+    count: int = 1
+
+
+class SearchSuggestionsResponse(ApiModel):
+    """Response contract for search typeahead suggestions."""
+
+    status: Literal["ready"]
+    query: str
+    suggestions: list[SearchSuggestion]
+
+
 class SourceGovernance(ApiModel):
     """Governance status for one data source."""
 
