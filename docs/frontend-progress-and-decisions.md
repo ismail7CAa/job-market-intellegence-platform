@@ -25,9 +25,9 @@ Problem:
 Solution:
 
 - Added a dedicated static frontend under `job-intelligence/`.
-- Replaced the root route with `index.html`.
-- Added `/results` for the search results dashboard.
-- Mounted `/job-intelligence/...` for CSS and JavaScript assets.
+- Mounted the maintained static frontend at `/job-intelligence/`.
+- Redirected `/` to `/job-intelligence/`.
+- Redirected `/results` to `/job-intelligence/results.html`.
 
 Why:
 
@@ -104,9 +104,9 @@ Solution:
 
 - `search.js` calls the backend search API on submit.
 - The returned `JobSearchResponse` is stored in `sessionStorage`.
-- The browser then navigates to `/results`.
+- The browser then navigates to `/job-intelligence/results.html`.
 - `results.js` reads the stored payload from `sessionStorage`.
-- If no stored payload exists, `/results` redirects back to `/`.
+- If no stored payload exists, the results page redirects back to `/job-intelligence/`.
 - Filter, sort, and pagination changes refresh the backend payload and replace the stored result.
 
 Why:
@@ -143,8 +143,8 @@ Why:
 
 Added API endpoint tests that verify:
 
-- `/` serves the maintained static search page
-- `/results` serves the maintained static results page
+- `/` redirects to the maintained static search page at `/job-intelligence/`
+- `/results` redirects to the maintained static results page at `/job-intelligence/results.html`
 
 These tests protect the routing contract. Full visual QA still needs a browser pass once the local server is running.
 

@@ -39,8 +39,9 @@ job-intelligence/
 FastAPI serves:
 
 - `/` as the search landing page
-- `/results` as the results dashboard
-- `/job-intelligence/...` as static CSS and JavaScript assets
+- `/job-intelligence/` as the search dashboard
+- `/job-intelligence/results.html` as the results dashboard
+- `/` and `/results` as compatibility redirects into the mounted static frontend
 
 The frontend uses plain HTML, CSS, and vanilla JavaScript. Python/FastAPI remains the server and API layer.
 
@@ -129,7 +130,7 @@ The programming-language split is intentional:
 
 This is a better fit than Python-only rendering because the results page is interactive, but it avoids the cost of a full frontend framework before it is necessary.
 
-The search page calls `/jobs/search`, stores the returned API payload in `sessionStorage`, and then opens `/results`. The results page renders cards from that stored payload and redirects back to `/` if no search payload exists. This keeps raw JSON out of the user-facing flow while preserving clean API endpoints for tests and external clients.
+The search page calls `/jobs/search`, stores the returned API payload in `sessionStorage`, and then opens `/job-intelligence/results.html`. The results page renders cards from that stored payload and redirects back to `/job-intelligence/` if no search payload exists. This keeps raw JSON out of the user-facing flow while preserving clean API endpoints for tests and external clients.
 
 Search recommendations are also backend-owned. The frontend calls `/jobs/search/suggestions` while the user types, and the backend returns suggestions from the current job index plus ESCO-normalized terms. This avoids hardcoded client-side word lists and keeps recommendations accurate when the provider data changes.
 
