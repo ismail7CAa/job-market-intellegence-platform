@@ -167,7 +167,7 @@
       });
       sessionStorage.setItem(resultsKey, JSON.stringify(data));
       sessionStorage.setItem(stateKey, JSON.stringify(searchState));
-      window.location.href = "results.html";
+      window.location.href = "/job-intelligence/results.html";
     } catch (error) {
       showStatus(error.message || "Suche fehlgeschlagen. Bitte versuchen Sie es erneut.", true);
       setBusy(false);

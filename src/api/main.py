@@ -83,7 +83,7 @@ app.add_exception_handler(StarletteHTTPException, http_error_handler)
 app.add_exception_handler(RequestValidationError, validation_error_handler)
 app.mount(
     "/job-intelligence",
-    StaticFiles(directory=FRONTEND_DIR),
+    StaticFiles(directory=FRONTEND_DIR, html=True),
     name="job-intelligence",
 )
 
@@ -867,13 +867,13 @@ def _render_search_dashboard() -> HTMLResponse:
 @app.get("/")
 async def root():
     """Germany-wide job search homepage."""
-    return FileResponse(FRONTEND_DIR / "index.html")
+    return RedirectResponse(url="/job-intelligence/", status_code=307)
 
 
 @app.get("/results")
 async def results_page():
     """Repository-backed search results dashboard."""
-    return FileResponse(FRONTEND_DIR / "results.html")
+    return RedirectResponse(url="/job-intelligence/results.html", status_code=307)
 
 
 @app.get("/jobs/search", response_model=JobSearchResponse)
