@@ -281,7 +281,7 @@
   let facetsPayload = null;
 
   function redirectToSearch() {
-    window.location.href = "/";
+    window.location.href = "./";
   }
 
   function readStoredPayload() {
