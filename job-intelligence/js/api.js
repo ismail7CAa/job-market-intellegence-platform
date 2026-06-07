@@ -1,6 +1,14 @@
 window.JobIntelApi = (function () {
+  function apiOrigin() {
+    const { hostname, port, origin } = window.location;
+    if ((hostname === "localhost" || hostname === "127.0.0.1") && port && port !== "8000") {
+      return `${window.location.protocol}//${hostname}:8000`;
+    }
+    return origin;
+  }
+
   async function request(path, params) {
-    const url = new URL(path, window.location.origin);
+    const url = new URL(path, apiOrigin());
     Object.entries(params || {}).forEach(([key, value]) => {
       if (value !== undefined && value !== null && String(value).trim() !== "") {
         url.searchParams.set(key, value);
