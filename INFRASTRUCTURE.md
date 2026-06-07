@@ -40,18 +40,38 @@ cd job-market-intellegence-platform
 cp .env.example .env
 # Edit .env with your settings
 
-# 3. Start local environment
-bash scripts/dev-setup.sh
+# 3. Start the Dockerized app and database
+docker compose up --build app
 
-# 4. Run local developer workflows
-make test
-make ingest
-make serve
-
-# 5. Access the application
+# 4. Access the application
+# Dashboard: http://localhost:8000/job-intelligence/
 # API: http://localhost:8000
 # Docs: http://localhost:8000/docs
 ```
+
+Check the running stack:
+
+```bash
+docker compose ps
+curl http://localhost:8000/health
+curl 'http://localhost:8000/jobs/search?q=Pflege&location=Berlin&per_page=1'
+docker compose logs -f app
+```
+
+Stop it:
+
+```bash
+docker compose down
+```
+
+The default local Compose stack starts only `app`, `postgres`, and optional `redis`. Kafka/Zookeeper and Airflow are available through profiles:
+
+```bash
+docker compose --profile pipeline up --build
+docker compose --profile airflow up --build
+```
+
+On macOS with Docker Desktop, credential-helper errors usually mean the CLI symlink points at an old mounted app path. The helper should resolve to `/Applications/Docker.app/Contents/Resources/bin/docker-credential-desktop`.
 
 ## Docker Deployment
 

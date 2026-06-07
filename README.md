@@ -7,7 +7,7 @@ The project is built as a portfolio-grade slice of a real analytics system: type
 ## Demo Status
 
 - Public deployment: currently stopped.
-- Local dashboard: [http://localhost:8000](http://localhost:8000) after running `make serve`
+- Local dashboard: [http://localhost:8000/job-intelligence/](http://localhost:8000/job-intelligence/) after running `docker compose up --build app` or `make serve`
 - Local API docs: [http://localhost:8000/docs](http://localhost:8000/docs) after running `make serve`
 
 Public cloud deployment now defaults to a one-host AWS EC2 path using Docker Compose, GHCR images, and a local Postgres container. Terraform/ECS, RDS, load balancers, NAT gateways, and Kubernetes are kept as optional production scaffolding because they can create AWS charges. See [INFRASTRUCTURE.md](INFRASTRUCTURE.md) for the deployment path.
@@ -118,6 +118,61 @@ The backend blocks unapproved live sources through `/data/fetch` and reports sou
 - **Tests cover engineering risk rather than chasing vanity coverage.** The suite includes feature-engineering unit tests, schema validation tests on pipeline output, and model performance regression tests against configurable baseline thresholds.
 
 ## Developer Workflow
+
+### Docker Quick Start
+
+Docker is the easiest way to run the product surface with the same FastAPI/Postgres boundary used by the deployment path.
+
+```bash
+docker compose up --build app
+```
+
+Then open:
+
+- Dashboard: [http://localhost:8000/job-intelligence/](http://localhost:8000/job-intelligence/)
+- API docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+- Health check: [http://localhost:8000/health](http://localhost:8000/health)
+
+Useful checks:
+
+```bash
+docker compose ps
+curl http://localhost:8000/health
+curl 'http://localhost:8000/jobs/search?q=Pflege&location=Berlin&per_page=1'
+docker compose logs -f app
+```
+
+Stop the local stack:
+
+```bash
+docker compose down
+```
+
+The default Compose stack starts only the app and Postgres. Optional infrastructure is behind profiles so the main web app does not pull or run extra services:
+
+```bash
+docker compose --profile pipeline up --build
+docker compose --profile airflow up --build
+```
+
+Docker Desktop notes for macOS:
+
+- If `docker` is not found, Docker Desktop may have installed the binary but not a working CLI symlink. The binary usually lives at `/Applications/Docker.app/Contents/Resources/bin/docker`.
+- If Compose reports `docker-credential-desktop` is missing, fix the credential helper symlink:
+
+```bash
+sudo ln -sf /Applications/Docker.app/Contents/Resources/bin/docker-credential-desktop /usr/local/bin/docker-credential-desktop
+```
+
+- If Docker Desktop binaries are installed but not on `PATH`, this temporary workaround is enough:
+
+```bash
+PATH="/Applications/Docker.app/Contents/Resources/bin:$PATH" docker compose up --build app
+```
+
+The canonical frontend path is `/job-intelligence/`. The root route redirects there, and `/results` redirects to `/job-intelligence/results.html`.
+
+### Python Workflow
 
 ```bash
 make install
