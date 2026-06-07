@@ -20,26 +20,31 @@ services:
 
   # Zookeeper for Kafka
   zookeeper:
-    image: bitnami/zookeeper:3.9
+    image: confluentinc/cp-zookeeper:7.6.1
     container_name: jmip_zookeeper
+    profiles: ["pipeline"]
     environment:
-      ALLOW_ANONYMOUS_LOGIN: yes
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
     ports:
       - "2181:2181"
     volumes:
-      - zookeeper_data:/bitnami/zookeeper
+      - zookeeper_data:/var/lib/zookeeper/data
 
   # Kafka
   kafka:
-    image: bitnami/kafka:3.5
+    image: confluentinc/cp-kafka:7.6.1
     container_name: jmip_kafka
+    profiles: ["pipeline"]
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:9094
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9094
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      ALLOW_PLAINTEXT_LISTENER: yes
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
     ports:
       - "9092:9092"
       - "9094:9094"
@@ -52,6 +57,7 @@ services:
   airflow-init:
     image: apache/airflow:2.7.3
     container_name: jmip_airflow_init
+    profiles: ["airflow"]
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://${DB_USER:-jobmarket}:${DB_PASSWORD:-dev_password}@postgres:5432/${DB_NAME:-job_market}
@@ -67,6 +73,7 @@ services:
   airflow-webserver:
     image: apache/airflow:2.7.3
     container_name: jmip_airflow_webserver
+    profiles: ["airflow"]
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://${DB_USER:-jobmarket}:${DB_PASSWORD:-dev_password}@postgres:5432/${DB_NAME:-job_market}
@@ -87,6 +94,7 @@ services:
   airflow-scheduler:
     image: apache/airflow:2.7.3
     container_name: jmip_airflow_scheduler
+    profiles: ["airflow"]
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql://${DB_USER:-jobmarket}:${DB_PASSWORD:-dev_password}@postgres:5432/${DB_NAME:-job_market}
@@ -107,6 +115,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: jmip_kafka_consumer
+    profiles: ["pipeline"]
     environment:
       GOOGLE_APPLICATION_CREDENTIALS: /app/service-account.json
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
@@ -143,8 +152,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      kafka:
-        condition: service_started
     volumes:
       - ./src:/app/src
       - ./config:/app/config:ro
