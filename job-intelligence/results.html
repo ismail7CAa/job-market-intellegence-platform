@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="de">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Search Results | German Job Market Intelligence</title>
+  <title>Suchergebnisse | Job Market Intelligence</title>
   <link rel="stylesheet" href="/job-intelligence/css/base.css">
   <link rel="stylesheet" href="/job-intelligence/css/results.css">
 </head>
@@ -13,85 +13,85 @@
       <span class="brand-mark">DE</span>
       <span>Job Market Intelligence</span>
     </a>
-    <form id="top-search-form" class="top-search" aria-label="Update search">
-      <input id="query" name="q" type="search" autocomplete="off" placeholder="Search role, skill, company">
-      <input id="location" name="location" type="search" autocomplete="off" placeholder="Location">
-      <button type="submit">Search</button>
+    <form id="top-search-form" class="top-search" aria-label="Suche aktualisieren">
+      <input id="query" name="q" type="search" autocomplete="off" placeholder="Beruf, Kompetenz, Unternehmen">
+      <input id="location" name="location" type="search" autocomplete="off" placeholder="Ort">
+      <button id="top-search-button" type="submit">Suchen</button>
     </form>
   </header>
 
   <main class="results-layout">
-    <aside class="filter-rail" aria-label="Search filters">
+    <aside class="filter-rail" aria-label="Suchfilter">
       <div class="rail-section">
-        <p class="eyebrow">Filters</p>
+        <p class="eyebrow" data-i18n="filtersEyebrow">Filter</p>
         <label class="field">
-          <span>Sort</span>
+          <span data-i18n="sortLabel">Sortierung</span>
           <select id="sort">
-            <option value="relevance">Relevance</option>
-            <option value="salary_desc">Salary high to low</option>
-            <option value="salary_asc">Salary low to high</option>
-            <option value="posted_desc">Newest</option>
-            <option value="company">Company</option>
-            <option value="title">Title</option>
+            <option value="relevance">Relevanz</option>
+            <option value="salary_desc">Gehalt absteigend</option>
+            <option value="salary_asc">Gehalt aufsteigend</option>
+            <option value="posted_desc">Neueste zuerst</option>
+            <option value="company">Unternehmen</option>
+            <option value="title">Berufsbezeichnung</option>
           </select>
         </label>
         <label class="field">
-          <span>Company</span>
-          <select id="company"><option value="">Any company</option></select>
+          <span data-i18n="companyLabel">Unternehmen</span>
+          <select id="company"><option value="">Alle Unternehmen</option></select>
         </label>
         <label class="field">
-          <span>Role type</span>
-          <select id="role-type"><option value="">Any role type</option></select>
+          <span data-i18n="roleTypeLabel">Berufsfeld</span>
+          <select id="role-type"><option value="">Alle Berufsfelder</option></select>
         </label>
         <label class="field">
-          <span>Employment type</span>
-          <select id="employment-type"><option value="">Any employment type</option></select>
+          <span data-i18n="employmentLabel">Anstellungsart</span>
+          <select id="employment-type"><option value="">Alle Anstellungsarten</option></select>
         </label>
         <label class="field">
-          <span>Minimum salary</span>
+          <span data-i18n="salaryMinLabel">Mindestgehalt</span>
           <input id="salary-min" type="number" min="0" step="1000" placeholder="40000">
         </label>
         <label class="field">
-          <span>Maximum salary</span>
+          <span data-i18n="salaryMaxLabel">Maximalgehalt</span>
           <input id="salary-max" type="number" min="0" step="1000" placeholder="90000">
         </label>
-        <button id="apply-filters" class="secondary-action" type="button">Apply filters</button>
+        <button id="apply-filters" class="secondary-action" type="button">Filter anwenden</button>
       </div>
 
       <div class="rail-section source-note">
-        <p class="eyebrow">Data guardrails</p>
-        <p id="governance-note">Loading data policy...</p>
+        <p class="eyebrow" data-i18n="sourceEyebrow">Datenquellen</p>
+        <p id="governance-note">Datenhinweis wird geladen...</p>
       </div>
     </aside>
 
     <section class="results-column" aria-live="polite">
       <div class="results-toolbar">
         <div>
-          <p class="eyebrow" id="search-label">Search results</p>
-          <h1 id="results-title">Loading jobs</h1>
+          <p class="eyebrow" id="search-label">Suchergebnisse</p>
+          <h1 id="results-title">Stellen werden geladen</h1>
         </div>
         <div class="pager">
-          <button id="previous-page" type="button" aria-label="Previous page">Prev</button>
+          <button id="previous-page" type="button" aria-label="Vorherige Seite">Zurueck</button>
           <span id="page-label">Page 1</span>
-          <button id="next-page" type="button" aria-label="Next page">Next</button>
+          <button id="next-page" type="button" aria-label="Naechste Seite">Weiter</button>
         </div>
       </div>
 
-      <div class="intelligence-strip" aria-label="Search intelligence">
+      <div class="intelligence-strip" aria-label="Suchkontext">
         <article>
-          <span>Total matches</span>
+          <span data-i18n="totalMatches">Treffer</span>
           <strong id="total-matches">-</strong>
         </article>
         <article>
-          <span>Average salary</span>
+          <span data-i18n="averageSalary">Durchschnittsgehalt</span>
           <strong id="average-salary">-</strong>
         </article>
         <article>
-          <span>Listed salaries</span>
+          <span data-i18n="listedSalaries">Ausgewiesene Gehaelter</span>
           <strong id="listed-salaries">-</strong>
         </article>
         <article>
-          <span>Apply links</span>
+          <span data-i18n="applyLinks">Bewerbungslinks</span>
           <strong id="apply-links">-</strong>
         </article>
       </div>
@@ -100,11 +100,11 @@
       <div id="job-list" class="job-list"></div>
     </section>
 
-    <aside class="detail-panel" aria-label="Selected job detail">
+    <aside class="detail-panel" aria-label="Ausgewaehlte Stelle">
       <div id="detail-empty" class="detail-empty">
-        <p class="eyebrow">Job detail</p>
-        <h2>Select a result</h2>
-        <p>Open a job to inspect salary context, source policy, similar roles, and the application handoff.</p>
+        <p class="eyebrow">Stellendetail</p>
+        <h2>Waehlen Sie eine Stelle aus</h2>
+        <p>Oeffnen Sie ein Ergebnis fuer Gehaltskontext, aehnliche Rollen und den direkten Bewerbungsweg.</p>
       </div>
       <div id="detail-content" hidden></div>
     </aside>

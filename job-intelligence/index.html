@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="de">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>German Job Market Intelligence</title>
+  <title>Jobs in Deutschland | Job Market Intelligence</title>
   <link rel="stylesheet" href="/job-intelligence/css/base.css">
   <link rel="stylesheet" href="/job-intelligence/css/search.css">
 </head>
@@ -13,42 +13,38 @@
       <span class="brand-mark">DE</span>
       <span>Job Market Intelligence</span>
     </a>
-    <nav class="header-nav" aria-label="Primary">
-      <a href="/data/governance">Data policy</a>
-      <a href="/ready">Readiness</a>
-      <a href="/docs">API</a>
-    </nav>
+    <div class="header-signal" aria-label="Market focus">Deutschland</div>
   </header>
 
   <main class="search-shell">
     <section class="hero" aria-labelledby="page-title">
-      <p class="eyebrow">Germany-wide job search</p>
-      <h1 id="page-title">Find your next job in Germany faster.</h1>
+      <p class="eyebrow">Jobsuche in Deutschland</p>
+      <h1 id="page-title">Finden Sie schneller den passenden Job.</h1>
       <p class="hero-copy">
-        Search across roles and cities, compare salary signals, and open the right application page in one focused flow.
+        Eine klare Suche fuer passende Stellen, Gehaltskontext und den direkten Weg zur Bewerbung.
       </p>
     </section>
 
-    <section class="search-panel" aria-label="Search jobs">
+    <section class="search-panel" aria-label="Jobs suchen">
       <form id="search-form" class="search-form">
         <label class="field field-query">
-          <span>Role, company, skill, or profession</span>
-          <input id="query" name="q" type="search" autocomplete="off" placeholder="Pflege, Buchhaltung, Sales Manager">
+          <span>Beruf, Unternehmen oder Kompetenz</span>
+          <input id="query" name="q" type="search" autocomplete="off" placeholder="Pflege, Buchhaltung, Logistik, Vertrieb">
           <div id="suggestions" class="suggestions" hidden></div>
         </label>
         <label class="field">
-          <span>Location</span>
-          <input id="location" name="location" type="search" autocomplete="off" placeholder="Germany, Berlin, Hamburg">
+          <span>Ort</span>
+          <input id="location" name="location" type="search" autocomplete="off" placeholder="Deutschland, Berlin, Hamburg">
         </label>
-        <button class="primary-action" type="submit">Search jobs</button>
+        <button class="primary-action" type="submit">Jobs suchen</button>
       </form>
 
-      <div class="quick-searches" aria-label="Fast searches">
+      <div class="quick-searches" aria-label="Schnellsuchen">
         <button type="button" data-query="Pflege">Pflege</button>
         <button type="button" data-query="Buchhaltung">Buchhaltung</button>
         <button type="button" data-query="Logistik">Logistik</button>
-        <button type="button" data-query="Sales Manager">Sales Manager</button>
-        <button type="button" data-query="Data Analyst">Data Analyst</button>
+        <button type="button" data-query="Vertrieb">Vertrieb</button>
+        <button type="button" data-query="Ingenieurwesen">Ingenieurwesen</button>
       </div>
       <div id="search-status" class="status-message" hidden></div>
     </section>

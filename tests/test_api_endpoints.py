@@ -23,6 +23,7 @@ class TestApiEndpoints:
         assert "text/html" in response.headers["content-type"]
         assert "German Job Market Intelligence" in response.text
         assert "/job-intelligence/js/search.js" in response.text
+        assert 'href="/docs"' not in response.text
 
     def test_static_results_page_is_served_from_fastapi(self):
         """Results route should serve the frontend dashboard shell."""
@@ -30,7 +31,7 @@ class TestApiEndpoints:
 
         assert response.status_code == 200
         assert "text/html" in response.headers["content-type"]
-        assert "Search Results" in response.text
+        assert "Suchergebnisse" in response.text
         assert "/job-intelligence/js/results.js" in response.text
 
     def test_predict_roles_endpoint(self):

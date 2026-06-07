@@ -194,6 +194,30 @@ Why:
 - Suggestions stay aligned with the actual job index and ESCO normalization.
 - The frontend remains simple while the backend owns search intelligence.
 
+## 10. German-First Professional Polish
+
+Problem:
+
+- The platform focuses on jobs in Germany, but the first UI still felt too English.
+- German searches such as `Pflege` could return normalized backend roles such as `Nurse`, which made the result language feel inconsistent.
+- The top-right `API` link exposed an implementation detail on the user-facing product surface.
+
+Solution:
+
+- Switched the landing and results pages to German-first product copy.
+- Removed the visible `/docs` API link, readiness link, and raw governance link from the landing header.
+- Added a lightweight frontend language layer.
+- German searches now render localized job titles, field labels, salary labels, role tags, employment types, work modes, locations, detail headings, and apply copy.
+- English searches remain supported and can still render English UI copy.
+- Typeahead suggestions can display German labels while preserving the backend search value in `sessionStorage`.
+- The search and results layouts were tightened with a wider search surface, clearer product header, stronger apply button, and more polished result/detail spacing.
+
+Why:
+
+- German users should not feel that the platform translates their intent into an English-only product.
+- The backend can keep using normalized English seed terms internally while the frontend presents the right language for the user.
+- Removing technical links makes the product feel like a real job-search experience rather than an API demo.
+
 ## Remaining Frontend Work
 
 Next frontend steps:
