@@ -1,4 +1,4 @@
-.PHONY: help install ingest train serve test migrate migration
+.PHONY: help install ingest train serve test docker-check migrate migration
 
 PYTHON ?= python
 PIP ?= $(PYTHON) -m pip
@@ -20,6 +20,7 @@ help:
 	@echo "  make train      Retrain and track the role predictor"
 	@echo "  make serve      Start the FastAPI app"
 	@echo "  make test       Run the test suite"
+	@echo "  make docker-check  Verify the Dockerized app, frontend, and search API"
 	@echo "  make migrate    Apply Alembic migrations"
 	@echo "  make migration MESSAGE='describe change'  Create an Alembic revision"
 	@echo ""
@@ -44,6 +45,9 @@ serve:
 
 test:
 	$(PYTHON) -m pytest $(PYTEST_ARGS)
+
+docker-check:
+	bash scripts/check-docker-app.sh
 
 migrate:
 	$(PYTHON) -m alembic upgrade head

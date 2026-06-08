@@ -166,6 +166,7 @@ Useful checks:
 
 ```bash
 docker compose ps
+make docker-check
 curl http://localhost:8000/health
 curl 'http://localhost:8000/jobs/search?q=Pflege&location=Berlin&per_page=1'
 docker compose logs -f app
