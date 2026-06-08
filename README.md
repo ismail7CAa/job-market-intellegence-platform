@@ -6,6 +6,14 @@ The project is built as a portfolio-grade slice of a real analytics system: type
 
 **Author and Developer:** Ismail Cherkaoui Aadil
 
+## Recruiter Summary
+
+- **Problem:** German job-market intelligence platform for searching roles, comparing salary context, and understanding skill demand with clear source-governance boundaries.
+- **Tech stack:** Python, FastAPI, PostgreSQL, Docker Compose, SQLAlchemy, Pandera, scikit-learn, MLflow, pytest, vanilla HTML/CSS/JavaScript.
+- **ML and analytics:** Role prediction, skill-demand analysis, salary anomaly detection, salary estimates for missing listings, and MLflow experiment tracking.
+- **API product:** Typed FastAPI endpoints for job search, filters, details, similar jobs, apply handoff, source governance, health checks, and analytics reports.
+- **Deployment:** Local Docker demo is ready with FastAPI + Postgres; public deployment is currently stopped, with a documented one-EC2 Docker Compose path for future live demos.
+
 ## Demo Status
 
 - Public deployment: currently stopped.
