@@ -4,6 +4,8 @@ A data and ML platform for German job search and job-market intelligence: search
 
 The project is built as a portfolio-grade slice of a real analytics system: typed configuration, schema contracts, reproducible local workflows, MLflow experiment tracking, tests around data and model behavior, and cloud deployment scaffolding.
 
+**Author and Developer:** Ismail Cherkaoui Aadil
+
 ## Demo Status
 
 - Public deployment: currently stopped.
