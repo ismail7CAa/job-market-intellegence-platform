@@ -310,7 +310,7 @@ When live-ingested jobs are not loaded yet, the API can fall back to the local s
 
 ## Current Status
 
-The public AWS EC2 deployment is currently stopped while the backend and data strategy are being hardened. Core local workflows for ingestion, validation, analytics, API serving, testing, Docker deployment, and MLflow-backed experimentation are in place. Kubernetes, Terraform, Airflow, dbt, Feast, and BigQuery remain staged infrastructure components for future production hardening rather than claimed live production systems.
+The local Docker demo is ready. The public cloud deployment is not currently live, and the product uses legal synthetic German seed listings rather than unapproved live job-board scraping. See [PROJECT_STATUS.md](PROJECT_STATUS.md) for the current readiness summary and future-work boundary.
 
 ## What I Would Improve With More Time
 
@@ -327,6 +327,7 @@ The public AWS EC2 deployment is currently stopped while the backend and data st
 
 ## References
 
+- [PROJECT_STATUS.md](PROJECT_STATUS.md): current demo readiness, deployment status, data status, and future work
 - [INFRASTRUCTURE.md](INFRASTRUCTURE.md): deployment architecture and cloud setup
 - [docs/backend-review-2026-06-06.md](docs/backend-review-2026-06-06.md): final backend readiness review before redeployment
 - [docs/backend-progress-and-decisions.md](docs/backend-progress-and-decisions.md): backend problem-solution log before frontend work
