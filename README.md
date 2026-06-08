@@ -12,6 +12,35 @@ The project is built as a portfolio-grade slice of a real analytics system: type
 
 Public cloud deployment now defaults to a one-host AWS EC2 path using Docker Compose, GHCR images, and a local Postgres container. Terraform/ECS, RDS, load balancers, NAT gateways, and Kubernetes are kept as optional production scaffolding because they can create AWS charges. See [INFRASTRUCTURE.md](INFRASTRUCTURE.md) for the deployment path.
 
+## Portfolio Demo Walkthrough
+
+The current portfolio slice is a Dockerized FastAPI + Postgres job-search product for the German market. It uses legal local demo listings so the workflow can be shown consistently without depending on live job-board scraping.
+
+![Job Market Intelligence search screen](docs/assets/job-intelligence-search.png)
+
+Run the app:
+
+```bash
+docker compose up --build app
+```
+
+Open Chrome at [http://localhost:8000/job-intelligence/](http://localhost:8000/job-intelligence/) and walk through:
+
+1. Search for `Pflege` with location `Berlin`.
+2. Confirm the results page opens and shows the matching Berlin healthcare role.
+3. Click `Ansehen` on a result to open the salary, market-context, source, and similar-role detail panel.
+4. Try the filters for company, role type, employment type, salary range, and sorting.
+5. Click `Bewerben` to verify the approved apply handoff opens the external source link.
+
+![Job Market Intelligence results and detail screen](docs/assets/job-intelligence-results.png)
+
+Quick API checks for the same demo path:
+
+```bash
+curl http://localhost:8000/health
+curl 'http://localhost:8000/jobs/search?q=Pflege&location=Berlin&per_page=1'
+```
+
 ## System Architecture
 
 ```mermaid
